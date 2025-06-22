@@ -1,7 +1,7 @@
 package net.irisshaders.iris.compat.dh;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.seibel.distanthorizons.api.DhApi;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiFogDrawMode;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiRenderPass;
@@ -182,6 +182,8 @@ public class LodRendererEvents {
 				if (getInstance().shouldOverride) {
 					if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
 						getInstance().getShadowShader().unbind();
+						RenderTarget mainRenderTarget = Minecraft.getInstance().getMainRenderTarget();
+						GlStateManager._viewport(0, 0, mainRenderTarget.width, mainRenderTarget.height);
 					} else {
 						getInstance().getSolidShader().unbind();
 					}
@@ -257,6 +259,12 @@ public class LodRendererEvents {
 						OverrideInjector.INSTANCE.bind(IDhApiFramebuffer.class, instance.getSolidFBWrapper());
 					}
 				}
+
+				// DH changes viewport using raw LWJGL calls
+				// https://gitlab.com/distant-horizons-team/distant-horizons-core/-/blob/main/core/src/main/java/com/seibel/distanthorizons/core/render/renderer/LodRenderer.java#L577
+				// We need to resynchronize with Iris's framebuffer binding optimization in MixinGlStateManager_FramebufferBinding
+				RenderTarget mainRenderTarget = Minecraft.getInstance().getMainRenderTarget();
+				GlStateManager._viewport(0, 0, mainRenderTarget.width, mainRenderTarget.height);
 			}
 		};
 		DhApi.events.bind(DhApiBeforeRenderSetupEvent.class, beforeRenderPassEvent);
@@ -288,6 +296,7 @@ public class LodRendererEvents {
 					if (instance.shouldOverride) {
 						if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
 							instance.getShadowShader().bind();
+							Iris.getPipelineManager().getPipeline().ifPresent(WorldRenderingPipeline::setupShadowViewport);
 						} else {
 							instance.getSolidShader().bind();
 						}
@@ -332,6 +341,7 @@ public class LodRendererEvents {
 					if (instance.shouldOverrideShadow && ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
 						instance.getShadowShader().bind();
 						instance.getShadowFB().bind();
+						Iris.getPipelineManager().getPipeline().ifPresent(WorldRenderingPipeline::setupShadowViewport);
 						atTranslucent = true;
 
 						return;
