@@ -23,7 +23,9 @@ public interface WorldRenderingPipeline {
 
     void renderShadows(LevelRendererAccessor worldRenderer, Camera playerCamera, CameraRenderState renderState);
 
-    void addDebugText(DebugScreenDisplayer messages);
+	void setupShadowViewport();
+
+	void addDebugText(DebugScreenDisplayer messages);
 
 	OptionalInt getForcedShadowRenderDistanceChunksForDisplay();
 
