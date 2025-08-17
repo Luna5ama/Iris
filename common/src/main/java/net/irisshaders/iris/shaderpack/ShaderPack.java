@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.JsonReader;
+import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
@@ -68,6 +69,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveAction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -78,9 +81,9 @@ public class ShaderPack {
 	private final Map<NamespacedId, ProgramSetInterface> overrides;
 	private final IdMap idMap;
 	private final LanguageMap languageMap;
+
 	private final EnumMap<TextureStage, Object2ObjectMap<String, CustomTextureData>> customTextureDataMap = new EnumMap<>(TextureStage.class);
 	private final Object2ObjectMap<String, CustomTextureData> irisCustomTextureDataMap = new Object2ObjectOpenHashMap<>();
-	private final CustomTextureData customNoiseTexture;
 	private final ShaderPackOptions shaderPackOptions;
 	private final OptionMenuContainer menuContainer;
 	private final ProfileSet.ProfileResult profile;
@@ -91,9 +94,14 @@ public class ShaderPack {
 	private final ShaderProperties shaderProperties;
 	private final List<String> dimensionIds;
 	private final Int2ObjectArrayMap<BuiltShaderStorageInfo> bufferObjects;
+	private CustomTextureData customNoiseTexture;
 	private Map<NamespacedId, String> dimensionMap;
 
-	public ShaderPack(Path root, ImmutableList<StringPair> environmentDefines, boolean isZip) throws IOException, IllegalStateException {
+	public ShaderPack(
+		Path root,
+		ImmutableList<StringPair> environmentDefines,
+		boolean isZip
+	) throws IOException, IllegalStateException {
 		this(root, Collections.emptyMap(), environmentDefines, isZip);
 	}
 
@@ -105,7 +113,12 @@ public class ShaderPack {
 	 *             have completed, and there is no need to hold on to the path for that reason.
 	 * @throws IOException if there are any IO errors during shader pack loading.
 	 */
-	public ShaderPack(Path root, Map<String, String> changedConfigs, ImmutableList<StringPair> environmentDefines, boolean isZip) throws IOException, IllegalStateException {
+	public ShaderPack(
+		Path root,
+		Map<String, String> changedConfigs,
+		ImmutableList<StringPair> environmentDefines,
+		boolean isZip
+	) throws IOException, IllegalStateException {
 		// A null path is not allowed.
 		Objects.requireNonNull(root);
 
@@ -326,38 +339,81 @@ public class ShaderPack {
 
 		this.idMap = new IdMap(root, shaderPackOptions, environmentDefines);
 
-		customNoiseTexture = shaderProperties.getNoiseTexturePath().map(path -> {
-			try {
-				return readTexture(root, new TextureDefinition.PNGDefinition(path));
-			} catch (IOException e) {
-				Iris.logger.error("Unable to read the custom noise texture at " + path, e);
-
-				return null;
-			}
-		}).orElse(null);
-
-		shaderProperties.getCustomTextures().forEach((textureStage, customTexturePropertiesMap) -> {
-			Object2ObjectMap<String, CustomTextureData> innerCustomTextureDataMap = new Object2ObjectOpenHashMap<>();
-			customTexturePropertiesMap.forEach((samplerName, path) -> {
-				try {
-					innerCustomTextureDataMap.put(samplerName, readTexture(root, path));
-				} catch (IOException e) {
-					Iris.logger.error("Unable to read the custom texture at " + path, e);
-				}
-			});
-
-			customTextureDataMap.put(textureStage, innerCustomTextureDataMap);
-		});
-
 		this.irisCustomImages = shaderProperties.getIrisCustomImages();
-
 		this.customUniforms = shaderProperties.getCustomUniforms();
 
-		shaderProperties.getIrisCustomTextures().forEach((name, texture) -> {
-			try {
-				irisCustomTextureDataMap.put(name, readTexture(root, texture));
-			} catch (IOException e) {
-				Iris.logger.error("Unable to read the custom texture at " + texture.getName(), e);
+		ForkJoinPool.commonPool().invoke(new RecursiveAction() {
+			@Override
+			protected void compute() {
+				var task1 = new RecursiveAction() {
+					@Override
+					protected void compute() {
+						customNoiseTexture = shaderProperties.getNoiseTexturePath().map(path -> {
+							try {
+								return readTexture(root, new TextureDefinition.PNGDefinition(path));
+							} catch (IOException e) {
+								Iris.logger.error("Unable to read the custom noise texture at " + path, e);
+
+								return null;
+							}
+						}).orElse(null);
+					}
+				}.fork();
+
+				var task2 = new RecursiveAction() {
+					@Override
+					protected void compute() {
+						shaderProperties.getCustomTextures().entrySet().parallelStream()
+							.map(entry -> {
+								var textureStage = entry.getKey();
+								var customTexturePropertiesMap = entry.getValue();
+								var innerCustomTextureDataMap = customTexturePropertiesMap.object2ObjectEntrySet().parallelStream()
+									.map(innerEntry -> {
+										var samplerName = innerEntry.getKey();
+										var path = innerEntry.getValue();
+										try {
+											return Pair.of(samplerName, readTexture(root, path));
+										} catch (IOException e) {
+											Iris.logger.error("Unable to read the custom texture at " + path, e);
+											return null;
+										}
+									})
+									.filter(Objects::nonNull)
+									.sequential()
+									.collect(Collectors.toMap(Pair::first, Pair::second, (a, b) -> a, Object2ObjectOpenHashMap::new));
+								return Pair.of(textureStage, innerCustomTextureDataMap);
+							})
+							.sequential()
+							.forEach((pair) -> {
+								customTextureDataMap.put(pair.first(), pair.second());
+							});
+					}
+				}.fork();
+
+				var task3 = new RecursiveAction() {
+					@Override
+					protected void compute() {
+
+						shaderProperties.getIrisCustomTextures().object2ObjectEntrySet().parallelStream()
+							.map(entry -> {
+								var name = entry.getKey();
+								var texture = entry.getValue();
+								try {
+									return Pair.of(name, readTexture(root, texture));
+								} catch (IOException e) {
+									Iris.logger.error("Unable to read the custom texture at " + texture.getName(), e);
+									return null;
+								}
+							})
+							.filter(Objects::nonNull)
+							.sequential()
+							.forEach(pair -> irisCustomTextureDataMap.put(pair.first(), pair.second()));
+					}
+				}.fork();
+
+				task1.join();
+				task2.join();
+				task3.join();
 			}
 		});
 	}
@@ -367,8 +423,10 @@ public class ShaderPack {
 	/**
 	 * Loads properties from a properties file in a shaderpack path
 	 */
-	private static Optional<Properties> loadProperties(Path shaderPath, String name,
-													   Iterable<StringPair> environmentDefines) {
+	private static Optional<Properties> loadProperties(
+		Path shaderPath, String name,
+		Iterable<StringPair> environmentDefines
+	) {
 		String fileContents = readProperties(shaderPath, name);
 		if (fileContents == null) {
 			return Optional.empty();
@@ -525,11 +583,10 @@ public class ShaderPack {
 				}
 			}
 
-			byte[] content = Files.readAllBytes(root.resolve(path));
-
 			if (definition instanceof TextureDefinition.PNGDefinition) {
-				customTextureData = new CustomTextureData.PngData(new TextureFilteringData(blur, clamp), content);
+				customTextureData = CustomTextureData.PngData.getOrCreate(new TextureFilteringData(blur, clamp), root.resolve(path));
 			} else if (definition instanceof TextureDefinition.RawDefinition rawDefinition) {
+				byte[] content = Files.readAllBytes(root.resolve(path));
 				customTextureData = switch (rawDefinition.getTarget()) {
 					case TEXTURE_1D ->
 						new CustomTextureData.RawData1D(content, new TextureFilteringData(blur, clamp), rawDefinition.getInternalFormat(), rawDefinition.getFormat(), rawDefinition.getPixelType(), rawDefinition.getSizeX());

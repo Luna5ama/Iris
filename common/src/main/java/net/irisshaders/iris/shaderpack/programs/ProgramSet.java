@@ -343,48 +343,15 @@ public class ProgramSet implements ProgramSetInterface {
 
 	private void locateDirectives() {
 		List<ProgramSource> programs = new ArrayList<>();
-		List<ComputeSource> computes = new ArrayList<>();
 
 		programs.addAll(Arrays.asList(getComposite(ProgramArrayId.ShadowComposite)));
 		programs.addAll(Arrays.asList(getComposite(ProgramArrayId.Begin)));
 		programs.addAll(Arrays.asList(getComposite(ProgramArrayId.Prepare)));
-
-		for (ComputeSource[][] sources : computePrograms.values()) {
-			for (ComputeSource[] source : sources) {
-				computes.addAll(Arrays.asList(source));
-			}
-		}
-
 		programs.addAll(gbufferPrograms.values());
-
-		for (ComputeSource computeSource : setup) {
-			if (computeSource != null) {
-				computes.add(computeSource);
-			}
-		}
-
 		programs.addAll(Arrays.asList(getComposite(ProgramArrayId.Deferred)));
 		programs.addAll(Arrays.asList(getComposite(ProgramArrayId.Composite)));
 
-		Collections.addAll(computes, finalCompute);
-		Collections.addAll(computes, shadowCompute);
-
-		for (ComputeSource source : computes) {
-			if (source != null) {
-				source.getSource().map(ConstDirectiveParser::findDirectives).ifPresent(constDirectives -> {
-					for (ConstDirectiveParser.ConstDirective directive : constDirectives) {
-						if (directive.getType() == ConstDirectiveParser.Type.IVEC3 && directive.getKey().equals("workGroups")) {
-							ComputeDirectiveParser.setComputeWorkGroups(source, directive);
-						} else if (directive.getType() == ConstDirectiveParser.Type.VEC2 && directive.getKey().equals("workGroupsRender")) {
-							ComputeDirectiveParser.setComputeWorkGroupsRelative(source, directive);
-						}
-					}
-				});
-			}
-		}
-
 		DispatchingDirectiveHolder packDirectiveHolder = new DispatchingDirectiveHolder();
-
 		packDirectives.acceptDirectivesFrom(packDirectiveHolder);
 
 		for (ProgramSource source : programs) {
@@ -392,11 +359,9 @@ public class ProgramSet implements ProgramSetInterface {
 				continue;
 			}
 
-			source.getFragmentSource().map(ConstDirectiveParser::findDirectives).ifPresent(directives -> {
-				for (ConstDirectiveParser.ConstDirective directive : directives) {
-					packDirectiveHolder.processDirective(directive);
-				}
-			});
+			for (ConstDirectiveParser.ConstDirective directive : source.getDirectives().getConstDirectives()) {
+				packDirectiveHolder.processDirective(directive);
+			}
 		}
 
 		packDirectives.getRenderTargetDirectives().getRenderTargetSettings().forEach((index, settings) ->

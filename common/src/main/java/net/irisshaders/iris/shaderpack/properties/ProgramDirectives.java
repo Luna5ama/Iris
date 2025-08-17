@@ -15,6 +15,7 @@ import net.irisshaders.iris.shaderpack.parsing.DispatchingDirectiveHolder;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -34,11 +35,12 @@ public class ProgramDirectives {
 	private final List<BufferBlendInformation> bufferBlendInformations;
 	private final ImmutableSet<Integer> mipmappedBuffers;
 	private final ImmutableMap<Integer, Boolean> explicitFlips;
+	private final List<ConstDirectiveParser.ConstDirective> constDirectives;
 	private boolean unknownDrawBuffers;
 
 	private ProgramDirectives(int[] drawBuffers, ViewportData viewportScale, @Nullable AlphaTest alphaTestOverride,
 							  Optional<BlendModeOverride> blendModeOverride, List<BufferBlendInformation> bufferBlendInformations, ImmutableSet<Integer> mipmappedBuffers,
-							  ImmutableMap<Integer, Boolean> explicitFlips) {
+							  ImmutableMap<Integer, Boolean> explicitFlips, List<ConstDirectiveParser.ConstDirective> constDirectives) {
 		this.drawBuffers = drawBuffers;
 		this.viewportScale = viewportScale;
 		this.alphaTestOverride = alphaTestOverride;
@@ -47,6 +49,7 @@ public class ProgramDirectives {
 		this.mipmappedBuffers = mipmappedBuffers;
 		this.explicitFlips = explicitFlips;
 		this.unknownDrawBuffers = false;
+		this.constDirectives = constDirectives;
 	}
 
 	public ProgramDirectives(ProgramSource source, ShaderProperties properties, Set<Integer> supportedRenderTargets,
@@ -112,11 +115,10 @@ public class ProgramDirectives {
 			}
 		});
 
-		source.getFragmentSource().map(ConstDirectiveParser::findDirectives).ifPresent(directives -> {
-			for (ConstDirectiveParser.ConstDirective directive : directives) {
-				directiveHolder.processDirective(directive);
-			}
-		});
+		this.constDirectives = source.getFragmentSource().map(ConstDirectiveParser::findDirectives).orElse(List.of());
+		for (ConstDirectiveParser.ConstDirective directive : this.constDirectives) {
+			directiveHolder.processDirective(directive);
+		}
 
 		this.mipmappedBuffers = ImmutableSet.copyOf(mipmappedBuffers);
 	}
@@ -162,7 +164,7 @@ public class ProgramDirectives {
 
 	public ProgramDirectives withOverriddenDrawBuffers(int[] drawBuffersOverride) {
 		return new ProgramDirectives(drawBuffersOverride, viewportScale, alphaTestOverride, blendModeOverride, bufferBlendInformations,
-			mipmappedBuffers, explicitFlips);
+			mipmappedBuffers, explicitFlips, constDirectives);
 	}
 
 	public int[] getDrawBuffers() {
@@ -195,5 +197,9 @@ public class ProgramDirectives {
 
 	public ImmutableMap<Integer, Boolean> getExplicitFlips() {
 		return explicitFlips;
+	}
+
+	public List<ConstDirectiveParser.ConstDirective> getConstDirectives() {
+		return constDirectives;
 	}
 }

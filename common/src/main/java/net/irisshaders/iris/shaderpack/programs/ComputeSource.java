@@ -1,5 +1,7 @@
 package net.irisshaders.iris.shaderpack.programs;
 
+import net.irisshaders.iris.shaderpack.parsing.ComputeDirectiveParser;
+import net.irisshaders.iris.shaderpack.parsing.ConstDirectiveParser;
 import net.irisshaders.iris.shaderpack.properties.IndirectPointer;
 import net.irisshaders.iris.shaderpack.properties.ShaderProperties;
 import org.joml.Vector2f;
@@ -20,6 +22,16 @@ public class ComputeSource {
 		this.source = source;
 		this.parent = parent;
 		this.indirectPointer = properties.getIndirectPointers().get(name);
+
+		getSource().map(ConstDirectiveParser::findDirectives).ifPresent(constDirectives -> {
+			for (ConstDirectiveParser.ConstDirective directive : constDirectives) {
+				if (directive.getType() == ConstDirectiveParser.Type.IVEC3 && directive.getKey().equals("workGroups")) {
+					ComputeDirectiveParser.setComputeWorkGroups(this, directive);
+				} else if (directive.getType() == ConstDirectiveParser.Type.VEC2 && directive.getKey().equals("workGroupsRender")) {
+					ComputeDirectiveParser.setComputeWorkGroupsRelative(this, directive);
+				}
+			}
+		});
 	}
 
 	public String getName() {

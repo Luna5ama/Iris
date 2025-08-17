@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.texture.GlTexture;
+import net.irisshaders.iris.gl.texture.InternalTextureFormat;
 import net.irisshaders.iris.gl.texture.TextureAccess;
 import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.gl.texture.TextureWrapper;
@@ -93,10 +94,9 @@ public class CustomTextureManager {
 	}
 
 	private TextureAccess createCustomTexture(CustomTextureData textureData) throws IOException, ResourceLocationException {
-		if (textureData instanceof CustomTextureData.PngData) {
-			NativeImageBackedCustomTexture texture = new NativeImageBackedCustomTexture((CustomTextureData.PngData) textureData);
-			ownedTextures.add(texture);
-
+		if (textureData instanceof CustomTextureData.PngData pngData) {
+			GlTexture texture = new GlTexture(TextureType.TEXTURE_2D, pngData);
+			ownedRawTextures.add(texture);
 			return texture;
 		} else if (textureData instanceof CustomTextureData.LightmapMarker) {
 			// Special code path for the light texture. While shader packs hardcode the primary light texture, it's
@@ -104,8 +104,7 @@ public class CustomTextureManager {
 			return new TextureWrapper(() -> ((LightTextureAccessor) Minecraft.getInstance().gameRenderer.lightTexture())
 				.getLightTexture().iris$getGlId(), TextureType.TEXTURE_2D);
 		} else if (textureData instanceof CustomTextureData.RawData1D rawData1D) {
-			GlTexture texture = new GlTexture(TextureType.TEXTURE_1D, rawData1D.getSizeX(), 0, 0, rawData1D.getInternalFormat().getGlFormat(), rawData1D.getPixelFormat().getGlFormat(), rawData1D.getPixelType().getGlFormat(), rawData1D.getContent(), rawData1D.getFilteringData());
-			ownedRawTextures.add(texture);
+			GlTexture texture = new GlTexture(TextureType.TEXTURE_1D, rawData1D.getSizeX(), 0, 0, rawData1D.getInternalFormat().getGlFormat(), rawData1D.getPixelFormat().getGlFormat(), rawData1D.getPixelType().getGlFormat(), rawData1D.getContent(), rawData1D.getFilteringData());			ownedRawTextures.add(texture);
 
 			return texture;
 		} else if (textureData instanceof CustomTextureData.RawDataRect rawDataRect) {

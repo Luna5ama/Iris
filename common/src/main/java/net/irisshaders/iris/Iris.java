@@ -489,7 +489,7 @@ public class Iris {
 				return false;
 			}
 			try (Stream<Path> stream = Files.walk(pack)) {
-				return stream
+				return stream.parallel()
 					.filter(Files::isDirectory)
 					// Prevent a pack simply named "shaders" from being
 					// identified as a valid pack
@@ -505,7 +505,7 @@ public class Iris {
 			try (FileSystem zipSystem = FileSystems.newFileSystem(pack, Iris.class.getClassLoader())) {
 				Path root = zipSystem.getRootDirectories().iterator().next();
 				try (Stream<Path> stream = Files.walk(root)) {
-					return stream
+					return stream.parallel()
 						.filter(Files::isDirectory)
 						.anyMatch(path -> path.endsWith("shaders"));
 				}

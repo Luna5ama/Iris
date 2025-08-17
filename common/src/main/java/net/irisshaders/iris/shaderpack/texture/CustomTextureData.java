@@ -1,9 +1,25 @@
 package net.irisshaders.iris.shaderpack.texture;
 
+import com.mojang.blaze3d.opengl.GlConst;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;
 import net.irisshaders.iris.gl.texture.PixelFormat;
 import net.irisshaders.iris.gl.texture.PixelType;
+import org.lwjgl.system.MemoryUtil;
+
+import java.io.IOException;
+import java.lang.ref.SoftReference;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class CustomTextureData {
 	private CustomTextureData() {
@@ -12,19 +28,108 @@ public abstract class CustomTextureData {
 
 	public static final class PngData extends CustomTextureData {
 		private final TextureFilteringData filteringData;
-		private final byte[] content;
+		private final ImageData imageData;
 
-		public PngData(TextureFilteringData filteringData, byte[] content) {
+		private PngData(TextureFilteringData filteringData, ImageData imageData) throws IOException {
 			this.filteringData = filteringData;
-			this.content = content;
+			this.imageData = imageData;
 		}
 
 		public TextureFilteringData getFilteringData() {
 			return filteringData;
 		}
 
-		public byte[] getContent() {
-			return content;
+		public ByteBuffer getContent() {
+			return imageData.content.asReadOnlyBuffer();
+		}
+
+		public int getWidth() {
+			return imageData.width;
+		}
+
+		public int getHeight() {
+			return imageData.height;
+		}
+
+		public int getInternalFormat() {
+			return InternalTextureFormat.RGBA8.getGlFormat();
+		}
+
+		public int getPixelFormat() {
+			return GlConst.toGl(imageData.format);
+		}
+
+		public int getPixelType() {
+			return PixelType.UNSIGNED_BYTE.getGlFormat();
+		}
+
+		public int getAlignment() {
+			return imageData.format.components();
+		}
+
+		private record ImageData(ByteBuffer content, int width, int height, NativeImage.Format format) {}
+
+		private record HashKey(byte[] hash) {
+			@Override
+			public boolean equals(Object o) {
+				if (o == null || getClass() != o.getClass()) return false;
+
+				HashKey hashKey = (HashKey) o;
+				return Arrays.equals(hash, hashKey.hash);
+			}
+
+			@Override
+			public int hashCode() {
+				return Arrays.hashCode(hash);
+			}
+		}
+
+		private static final ConcurrentHashMap<HashKey, SoftReference<ImageData>> imageCache = new ConcurrentHashMap<>();
+
+		public static PngData getOrCreate(TextureFilteringData filteringData, Path path) throws IOException {
+			ImageData imageData;
+			try (var fileChannel = FileChannel.open(path, StandardOpenOption.READ)) {
+				imageData = getOrCreate(fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size()));
+			} catch (UnsupportedOperationException e) {
+				try (var channel = Files.newByteChannel(path, StandardOpenOption.READ)) {
+					var buffer = MemoryUtil.memAlloc((int) channel.size());
+					try {
+						channel.read(buffer);
+						imageData = getOrCreate(buffer);
+					} finally {
+						MemoryUtil.memFree(buffer);
+					}
+				}
+			}
+			return new PngData(filteringData, imageData);
+		}
+
+		private static ImageData getOrCreate(ByteBuffer data) {
+			try {
+				MessageDigest md5 = MessageDigest.getInstance("md5");
+				md5.update(data);
+				data.clear();
+				var hashKey = new HashKey(md5.digest());
+				return imageCache.computeIfAbsent(hashKey, k -> {
+					try (var nativeImage = NativeImage.read(data)) {
+						var size = nativeImage.getWidth() * nativeImage.getHeight() * nativeImage.format().components();
+						var src = MemoryUtil.memByteBuffer(nativeImage.getPointer(), size);
+						var dst = ByteBuffer.allocateDirect(size);
+						dst.put(src);
+						dst.flip();
+						return new SoftReference<>(new ImageData(
+							dst,
+							nativeImage.getWidth(),
+							nativeImage.getHeight(),
+							nativeImage.format()
+						));
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				}).get();
+			} catch (NoSuchAlgorithmException e) {
+				throw new RuntimeException(e);
+			}
 		}
 	}
 
@@ -73,8 +178,10 @@ public abstract class CustomTextureData {
 		private final PixelType pixelType;
 		private final TextureFilteringData filteringData;
 
-		private RawData(byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
-						PixelFormat pixelFormat, PixelType pixelType) {
+		private RawData(
+			byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
+			PixelFormat pixelFormat, PixelType pixelType
+		) {
 			this.content = content;
 			this.filteringData = filteringData;
 			this.internalFormat = internalFormat;
@@ -106,8 +213,10 @@ public abstract class CustomTextureData {
 	public static final class RawData1D extends RawData {
 		private final int sizeX;
 
-		public RawData1D(byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
-						 PixelFormat pixelFormat, PixelType pixelType, int sizeX) {
+		public RawData1D(
+			byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
+			PixelFormat pixelFormat, PixelType pixelType, int sizeX
+		) {
 			super(content, filteringData, internalFormat, pixelFormat, pixelType);
 			int expectedSize = sizeX * pixelFormat.getComponentCount() * pixelType.getByteSize();
 
@@ -129,8 +238,10 @@ public abstract class CustomTextureData {
 		final int sizeX;
 		final int sizeY;
 
-		public RawData2D(byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
-						 PixelFormat pixelFormat, PixelType pixelType, int sizeX, int sizeY) {
+		public RawData2D(
+			byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
+			PixelFormat pixelFormat, PixelType pixelType, int sizeX, int sizeY
+		) {
 			super(content, filteringData, internalFormat, pixelFormat, pixelType);
 
 			int expectedSize = sizeX * sizeY * pixelFormat.getComponentCount() * pixelType.getByteSize();
@@ -159,8 +270,10 @@ public abstract class CustomTextureData {
 		final int sizeY;
 		final int sizeZ;
 
-		public RawData3D(byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
-						 PixelFormat pixelFormat, PixelType pixelType, int sizeX, int sizeY, int sizeZ) {
+		public RawData3D(
+			byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat,
+			PixelFormat pixelFormat, PixelType pixelType, int sizeX, int sizeY, int sizeZ
+		) {
 			super(content, filteringData, internalFormat, pixelFormat, pixelType);
 
 			int expectedSize = sizeX * sizeY * sizeZ * pixelFormat.getComponentCount() * pixelType.getByteSize();
@@ -190,7 +303,15 @@ public abstract class CustomTextureData {
 	}
 
 	public static class RawDataRect extends RawData2D {
-		public RawDataRect(byte[] content, TextureFilteringData filteringData, InternalTextureFormat internalFormat, PixelFormat pixelFormat, PixelType pixelType, int sizeX, int sizeY) {
+		public RawDataRect(
+			byte[] content,
+			TextureFilteringData filteringData,
+			InternalTextureFormat internalFormat,
+			PixelFormat pixelFormat,
+			PixelType pixelType,
+			int sizeX,
+			int sizeY
+		) {
 			super(content, filteringData, internalFormat, pixelFormat, pixelType, sizeX, sizeY);
 		}
 	}

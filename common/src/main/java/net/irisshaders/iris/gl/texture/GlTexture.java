@@ -3,6 +3,7 @@ package net.irisshaders.iris.gl.texture;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
+import net.irisshaders.iris.shaderpack.texture.CustomTextureData;
 import net.irisshaders.iris.shaderpack.texture.TextureFilteringData;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
@@ -13,7 +14,56 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.ByteBuffer;
 import java.util.function.IntSupplier;
 
+import static org.lwjgl.opengl.GL11C.GL_UNPACK_ALIGNMENT;
+import static org.lwjgl.opengl.GL11C.GL_UNPACK_ROW_LENGTH;
+import static org.lwjgl.opengl.GL11C.GL_UNPACK_SKIP_PIXELS;
+import static org.lwjgl.opengl.GL11C.GL_UNPACK_SKIP_ROWS;
+
 public class GlTexture extends GlResource implements TextureAccess {
+
+	public GlTexture(TextureType target, CustomTextureData.PngData pngData) {
+		super(GlStateManager._genTexture());
+		IrisRenderSystem.bindTextureForSetup(target.getGlType(), getGlId());
+
+		TextureUploadHelper.resetTextureUploadState();
+		GlStateManager._pixelStore(GL_UNPACK_ROW_LENGTH, pngData.getWidth());
+		GlStateManager._pixelStore(GL_UNPACK_SKIP_PIXELS, 0);
+		GlStateManager._pixelStore(GL_UNPACK_SKIP_ROWS, 0);
+		GlStateManager._pixelStore(GL_UNPACK_ALIGNMENT, pngData.getAlignment());
+
+		target.apply(
+			this.getGlId(),
+			pngData.getWidth(),
+			pngData.getHeight(),
+			0,
+			pngData.getInternalFormat(),
+			pngData.getPixelFormat(),
+			pngData.getPixelType(),
+			pngData.getContent()
+		);
+
+		int texture = this.getGlId();
+
+		var filteringData = pngData.getFilteringData();
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL11C.GL_TEXTURE_MIN_FILTER, filteringData.shouldBlur() ? GL11C.GL_LINEAR : GL11C.GL_NEAREST);
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL11C.GL_TEXTURE_MAG_FILTER, filteringData.shouldBlur() ? GL11C.GL_LINEAR : GL11C.GL_NEAREST);
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL11C.GL_TEXTURE_WRAP_S, filteringData.shouldClamp() ? GL13C.GL_CLAMP_TO_EDGE : GL13C.GL_REPEAT);
+
+		if (pngData.getHeight() > 0) {
+			IrisRenderSystem.texParameteri(texture, target.getGlType(), GL11C.GL_TEXTURE_WRAP_T, filteringData.shouldClamp() ? GL13C.GL_CLAMP_TO_EDGE : GL13C.GL_REPEAT);
+		}
+
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL20C.GL_TEXTURE_MAX_LEVEL, 0);
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL20C.GL_TEXTURE_MIN_LOD, 0);
+		IrisRenderSystem.texParameteri(texture, target.getGlType(), GL20C.GL_TEXTURE_MAX_LOD, 0);
+		IrisRenderSystem.texParameterf(texture, target.getGlType(), GL20C.GL_TEXTURE_LOD_BIAS, 0.0F);
+
+		IrisRenderSystem.bindTextureForSetup(target.getGlType(), 0);
+
+		this.target = target;
+	}
+
+
 	private final TextureType target;
 
 	public GlTexture(TextureType target, int sizeX, int sizeY, int sizeZ, int internalFormat, int format, int pixelType, byte[] pixels, TextureFilteringData filteringData) {
