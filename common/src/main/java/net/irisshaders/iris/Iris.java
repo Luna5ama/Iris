@@ -499,7 +499,7 @@ public class Iris {
 			try (FileSystem zipSystem = FileSystems.newFileSystem(pack, Iris.class.getClassLoader())) {
 				Path root = zipSystem.getRootDirectories().iterator().next();
 				try (Stream<Path> stream = Files.walk(root)) {
-					return stream
+					return stream.parallel()
 						.filter(Files::isDirectory)
 						.anyMatch(path -> path.endsWith("shaders"));
 				}

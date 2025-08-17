@@ -1,9 +1,6 @@
 package net.irisshaders.iris.gl.texture;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.sampler.GlSampler;
@@ -29,10 +26,13 @@ public class GlTexture extends GlResource implements TextureAccess {
 		TextureUploadHelper.resetTextureUploadState();
 
 		ByteBuffer buffer = MemoryUtil.memAlloc(pixels.length);
-		buffer.put(pixels);
-		buffer.flip();
-		target.apply(this.getGlId(), sizeX, sizeY, sizeZ, internalFormat, format, pixelType, buffer);
-		MemoryUtil.memFree(buffer);
+		try {
+			buffer.put(pixels);
+			buffer.flip();
+			target.apply(this.getGlId(), sizeX, sizeY, sizeZ, internalFormat, format, pixelType, buffer);
+		} finally {
+			MemoryUtil.memFree(buffer);
+		}
 
 		int texture = this.getGlId();
 

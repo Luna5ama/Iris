@@ -6,6 +6,8 @@ import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.shaderpack.FilledIndirectPointer;
+import net.irisshaders.iris.shaderpack.parsing.ComputeDirectiveParser;
+import net.irisshaders.iris.shaderpack.parsing.ConstDirectiveParser;
 import org.joml.Vector2f;
 import org.joml.Vector3i;
 import org.lwjgl.opengl.GL43C;
