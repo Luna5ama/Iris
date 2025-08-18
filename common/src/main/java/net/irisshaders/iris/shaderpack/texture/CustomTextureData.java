@@ -87,7 +87,7 @@ public abstract class CustomTextureData {
 		private static final ConcurrentHashMap<HashKey, SoftReference<ImageData>> imageCache = new ConcurrentHashMap<>();
 
 		public static PngData getOrCreate(TextureFilteringData filteringData, Path path) throws IOException {
-			ImageData imageData;
+			ImageData imageData = null;
 			try (var fileChannel = FileChannel.open(path, StandardOpenOption.READ)) {
 				imageData = getOrCreate(fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size()));
 			} catch (UnsupportedOperationException e) {
@@ -95,20 +95,23 @@ public abstract class CustomTextureData {
 					var buffer = MemoryUtil.memAlloc((int) channel.size());
 					try {
 						channel.read(buffer);
+						buffer.flip();
 						imageData = getOrCreate(buffer);
 					} finally {
 						MemoryUtil.memFree(buffer);
 					}
 				}
 			}
+			if (imageData == null) {
+				throw new IOException("Failed to load image from " + path);
+			}
 			return new PngData(filteringData, imageData);
 		}
 
 		private static ImageData getOrCreate(ByteBuffer data) {
 			try {
-				MessageDigest md5 = MessageDigest.getInstance("md5");
-				md5.update(data);
-				data.clear();
+				MessageDigest md5 = MessageDigest.getInstance("SHA-256");
+				md5.update(data.asReadOnlyBuffer());
 				var hashKey = new HashKey(md5.digest());
 				return imageCache.computeIfAbsent(hashKey, k -> {
 					try (var nativeImage = NativeImage.read(data)) {
