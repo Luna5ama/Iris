@@ -128,9 +128,9 @@ public class Iris {
 		}
 
 		if (GL.getCapabilities().GL_KHR_parallel_shader_compile) {
-			KHRParallelShaderCompile.glMaxShaderCompilerThreadsKHR(10);
+			KHRParallelShaderCompile.glMaxShaderCompilerThreadsKHR(32);
 		} else if (GL.getCapabilities().GL_ARB_parallel_shader_compile) {
-			ARBParallelShaderCompile.glMaxShaderCompilerThreadsARB(10);
+			ARBParallelShaderCompile.glMaxShaderCompilerThreadsARB(32);
 		}
 
 		PBRTextureManager.INSTANCE.init();

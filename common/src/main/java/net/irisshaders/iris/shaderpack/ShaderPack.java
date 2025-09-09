@@ -296,7 +296,7 @@ public class ShaderPack {
 		IncludeProcessor includeProcessor = new IncludeProcessor(graph);
 
 		// Set up our source provider for creating ProgramSets
-		Iterable<StringPair> finalEnvironmentDefines1 = environmentDefines;
+		List<StringPair> finalEnvironmentDefines1 = environmentDefines;
 		this.sourceProvider = (path) -> {
 			String pathString = path.getPathString();
 			// Removes the first "/" in the path if present, and the file

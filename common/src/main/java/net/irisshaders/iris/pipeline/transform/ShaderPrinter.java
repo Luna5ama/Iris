@@ -10,6 +10,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 /**
@@ -17,16 +22,24 @@ import java.util.stream.Stream;
  */
 public class ShaderPrinter {
 	private static final Path debugOutDir = IrisPlatformHelpers.getInstance().getGameDir().resolve("patched_shaders");
-	private static boolean outputLocationCleared = false;
+	private static final ConcurrentLinkedQueue<Future<?>> PENDING = new ConcurrentLinkedQueue<>();
+	private static AtomicBoolean outputLocationCleared = new AtomicBoolean(false);
 	private static int programCounter = 0;
 
 	public static void resetPrintState() {
-		outputLocationCleared = false;
+		while (!PENDING.isEmpty()) {
+			try {
+				PENDING.poll().get();
+			} catch (InterruptedException | ExecutionException e) {
+				// no-op
+			}
+		}
+		outputLocationCleared.set(false);
 		programCounter = 0;
 	}
 
 	public static void deleteIfClearing() {
-		if (!outputLocationCleared) {
+		if (!outputLocationCleared.getAndSet(true)) {
 			try {
 				if (Files.exists(debugOutDir)) {
 					try (Stream<Path> stream = Files.list(debugOutDir)) {
@@ -44,7 +57,6 @@ public class ShaderPrinter {
 			} catch (IOException e) {
 				Iris.logger.warn("Failed to initialize debug patched shader source location", e);
 			}
-			outputLocationCleared = true;
 		}
 	}
 
@@ -65,7 +77,7 @@ public class ShaderPrinter {
 		private final List<String> sources = isActive ? new ArrayList<>(PatchShaderType.values().length * 2) : null;
 
 		private String name;
-		private boolean done = false; // makes the print function idempotent
+		private AtomicBoolean done = new AtomicBoolean(false); // makes the print function idempotent
 
 		public ProgramPrintBuilder(String name) {
 			setName(name);
@@ -110,39 +122,39 @@ public class ShaderPrinter {
 		}
 
 		public void print() {
-			if (done) {
+			if (done.getAndSet(true)) {
 				return;
 			}
-			done = true;
 			if (isActive) {
-				if (!outputLocationCleared) {
-					try {
-						if (Files.exists(debugOutDir)) {
-							try (Stream<Path> stream = Files.list(debugOutDir).filter(s -> !FilenameUtils.getExtension(s.toString()).contains("properties"))) {
-								stream.forEach(path -> {
-									try {
-										Files.delete(path);
-									} catch (IOException e) {
-										throw new RuntimeException(e);
-									}
-								});
+				PENDING.add(ForkJoinPool.commonPool().submit(() -> {
+					if (!outputLocationCleared.getAndSet(true)) {
+						try {
+							if (Files.exists(debugOutDir)) {
+								try (Stream<Path> stream = Files.list(debugOutDir).filter(s -> !FilenameUtils.getExtension(s.toString()).contains("properties"))) {
+									stream.forEach(path -> {
+										try {
+											Files.delete(path);
+										} catch (IOException e) {
+											throw new RuntimeException(e);
+										}
+									});
+								}
 							}
+
+							Files.createDirectories(debugOutDir);
+						} catch (IOException e) {
+							Iris.logger.warn("Failed to initialize debug patched shader source location", e);
 						}
+					}
 
-						Files.createDirectories(debugOutDir);
+					try {
+						for (int i = 0; i < sources.size(); i += 2) {
+							Files.writeString(debugOutDir.resolve(sources.get(i)), sources.get(i + 1));
+						}
 					} catch (IOException e) {
-						Iris.logger.warn("Failed to initialize debug patched shader source location", e);
+						Iris.logger.warn("Failed to write debug patched shader source", e);
 					}
-					outputLocationCleared = true;
-				}
-
-				try {
-					for (int i = 0; i < sources.size(); i += 2) {
-						Files.writeString(debugOutDir.resolve(sources.get(i)), sources.get(i + 1));
-					}
-				} catch (IOException e) {
-					Iris.logger.warn("Failed to write debug patched shader source", e);
-				}
+				}));
 			}
 		}
 	}
