@@ -1,5 +1,7 @@
 package net.irisshaders.iris.shaderpack.preprocessor;
 
+import it.unimi.dsi.fastutil.Pair;
+import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
 import net.irisshaders.iris.helpers.StringPair;
 import org.anarres.cpp.Feature;
 import org.anarres.cpp.LexerException;
@@ -7,9 +9,26 @@ import org.anarres.cpp.Preprocessor;
 import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class JcppProcessor {
+	private static final ConcurrentHashMap<Pair<String, List<StringPair>>, String> CACHE = new ConcurrentHashMap<>();
+
 	// Derived from GlShader from Canvas, licenced under LGPL
-	public static String glslPreprocessSource(String source, Iterable<StringPair> environmentDefines) {
+	public static String glslPreprocessSource(String source, List<StringPair> environmentDefines) {
+		if (CACHE.size() > 65536) {
+			CACHE.clear();
+			System.out.println("JCPP cache cleared");
+		}
+
+		Pair<String, List<StringPair>> key = new ObjectObjectImmutablePair<>(source, environmentDefines);
+
+		return CACHE.computeIfAbsent(key, k -> glslPreprocessSourceUncached(source, environmentDefines));
+	}
+
+	// Derived from GlShader from Canvas, licenced under LGPL
+	private static String glslPreprocessSourceUncached(String source, List<StringPair> environmentDefines) {
 		if (source.contains(GlslCollectingListener.VERSION_MARKER)
 			|| source.contains(GlslCollectingListener.EXTENSION_MARKER)) {
 			throw new RuntimeException("Some shader author is trying to exploit internal Iris implementation details, stop!");
