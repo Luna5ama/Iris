@@ -2,58 +2,58 @@ package net.irisshaders.iris.shaderpack.include;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 // TODO: Write tests for this code
 public class IncludeProcessor {
 	private final IncludeGraph graph;
-	private final Map<AbsolutePackPath, ImmutableList<String>> cache;
 
 	public IncludeProcessor(IncludeGraph graph) {
 		this.graph = graph;
-		this.cache = new ConcurrentHashMap<>();
 	}
 
 	// TODO: Actual error handling
 
 	public ImmutableList<String> getIncludedFile(AbsolutePackPath path) {
-		ImmutableList<String> lines = cache.get(path);
-
-		if (lines == null) {
-			lines = process(path);
-			cache.put(path, lines);
-		}
-
-		return lines;
+		return process(path, new HashSet<>());
 	}
 
-	private ImmutableList<String> process(AbsolutePackPath path) {
+	private ImmutableList<String> process(AbsolutePackPath path, HashSet<AbsolutePackPath> includedSet) {
 		FileNode fileNode = graph.getNodes().get(path);
 
 		if (fileNode == null) {
 			return ImmutableList.of();
 		}
 
-		ImmutableList.Builder<String> builder = ImmutableList.builder();
+		ImmutableList.Builder<String> linesBuilder = ImmutableList.builder();
 
 		ImmutableList<String> lines = fileNode.getLines();
-		ImmutableMap<Integer, AbsolutePackPath> includes = fileNode.getIncludes();
+		var includes = fileNode.getIncludes();
 
 		for (int i = 0; i < lines.size(); i++) {
-			AbsolutePackPath include = includes.get(i);
+			var includeEntry = includes.get(i);
 
-			if (include != null) {
-				// TODO: Don't recurse like this, and check for cycles
-				// TODO: Better diagnostics
-				builder.addAll(Objects.requireNonNull(getIncludedFile(include)));
+			if (includeEntry != null) {
+				var includePath = includeEntry.path();
+				if (!includedSet.add(includePath)) {
+					FileNode includeFileNode = graph.getNodes().get(includePath);
+					if (includeFileNode != null && includeFileNode.hasIncludeGuard()) {
+						continue;
+					}
+				}
+				var subIncludedSet = includeEntry.conditional() ? new HashSet<>(includedSet) : includedSet;
+				linesBuilder.addAll(Objects.requireNonNull(process(includePath, subIncludedSet)));
 			} else {
-				builder.add(lines.get(i));
+				linesBuilder.add(lines.get(i));
 			}
 		}
 
-		return builder.build();
+		return linesBuilder.build();
 	}
 }

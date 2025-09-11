@@ -127,9 +127,9 @@ public class IncludeGraph {
 			FileNode node = new FileNode(next, lines);
 			boolean selfInclude = false;
 
-			for (Map.Entry<Integer, AbsolutePackPath> include : node.getIncludes().entrySet()) {
+			for (var include : node.getIncludes().entrySet()) {
 				int line = include.getKey();
-				AbsolutePackPath included = include.getValue();
+				AbsolutePackPath included = include.getValue().path();
 
 				if (next.equals(included)) {
 					selfInclude = true;
@@ -179,8 +179,8 @@ public class IncludeGraph {
 					FileNode lastFile = nodes.get(lastFilePath);
 					int lineNumber = -1;
 
-					for (Map.Entry<Integer, AbsolutePackPath> include : lastFile.getIncludes().entrySet()) {
-						if (include.getValue() == node) {
+					for (var include : lastFile.getIncludes().entrySet()) {
+						if (include.getValue().path() == node) {
 							lineNumber = include.getKey() + 1;
 						}
 					}
@@ -225,7 +225,8 @@ public class IncludeGraph {
 		path.add(frontier);
 		visited.add(frontier);
 
-		for (AbsolutePackPath included : nodes.get(frontier).getIncludes().values()) {
+		for (var includeEntry : nodes.get(frontier).getIncludes().values()) {
+			var included = includeEntry.path();
 			if (!nodes.containsKey(included)) {
 				// file that failed to load for another reason, error should already be reported
 				continue;
