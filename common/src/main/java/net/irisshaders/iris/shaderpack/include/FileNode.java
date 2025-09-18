@@ -40,10 +40,12 @@ public class FileNode {
 
 		ImmutableMap.Builder<Integer, IncludeEntry> foundIncludes = ImmutableMap.builder();
 
-		boolean foundCode = false;
 		{
+			boolean foundCode = false;
 			boolean blockComment = false;
 			int macroConditionDepth = 0;
+			int lastEndIfIndex = Integer.MAX_VALUE;
+			int firstNotNestedIndex = -1;
 
 			outer:
 			for (int i = 0; i < lines.size(); i++) {
@@ -92,10 +94,31 @@ public class FileNode {
 					macroConditionDepth++;
 				} else if (line.startsWith("#endif")) {
 					macroConditionDepth--;
+					lastEndIfIndex = i;
 				}
 
+				if (macroConditionDepth <= 0 && firstNotNestedIndex == -1) {
+					firstNotNestedIndex = i;
+				}
+			}
 
-				if (!line.startsWith("#include")) continue;
+			foundIncludeGuard &= firstNotNestedIndex >= lastEndIfIndex;
+		}
+
+		{
+			int macroConditionDepth = 0;
+			for (int i = 0; i < lines.size(); i++) {
+				String line = lines.get(i).trim();
+
+				if (line.startsWith("#if")) {
+					macroConditionDepth++;
+				} else if (line.startsWith("#endif")) {
+					macroConditionDepth--;
+				}
+
+				if (!line.startsWith("#include")) {
+					continue;
+				}
 
 				// Remove the "#include " part so that we just have the file path
 				String target = line.substring("#include ".length()).trim();
@@ -120,32 +143,8 @@ public class FileNode {
 			}
 		}
 
-		boolean endsWithEndIf = false;
-
-		{
-			boolean blockComment = false;
-			for (int i = lines.size() - 1; i >= 0; i--) {
-				String line = lines.get(i);
-
-				if (line.isEmpty()) continue;
-				if (line.startsWith("//")) continue;
-				if (line.contains("/*")) {
-					blockComment = true;
-				}
-				if (line.contains("*/")) {
-					blockComment = false;
-				}
-				if (blockComment) continue;
-
-				if (line.startsWith("#endif")) {
-					endsWithEndIf = true;
-				}
-				break;
-			}
-		}
-
 		this.includes = foundIncludes.build();
-		this.includeGuard = foundIncludeGuard && endsWithEndIf;
+		this.includeGuard = foundIncludeGuard;
 	}
 
 	public AbsolutePackPath getPath() {
