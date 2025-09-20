@@ -41,13 +41,13 @@ public class IncludeProcessor {
 
 			if (includeEntry != null) {
 				var includePath = includeEntry.path();
-				if (!includedSet.add(includePath)) {
+				var subIncludedSet = includeEntry.conditional() ? new HashSet<>(includedSet) : includedSet;
+				if (!subIncludedSet.add(includePath)) {
 					FileNode includeFileNode = graph.getNodes().get(includePath);
 					if (includeFileNode != null && includeFileNode.hasIncludeGuard()) {
 						continue;
 					}
 				}
-				var subIncludedSet = includeEntry.conditional() ? new HashSet<>(includedSet) : includedSet;
 				linesBuilder.addAll(Objects.requireNonNull(process(includePath, subIncludedSet)));
 			} else {
 				linesBuilder.add(lines.get(i));
