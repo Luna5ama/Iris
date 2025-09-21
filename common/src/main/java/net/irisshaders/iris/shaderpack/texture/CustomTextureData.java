@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public abstract class CustomTextureData {
 	private CustomTextureData() {
@@ -113,23 +114,34 @@ public abstract class CustomTextureData {
 				MessageDigest md5 = MessageDigest.getInstance("SHA-256");
 				md5.update(data.asReadOnlyBuffer());
 				var hashKey = new HashKey(md5.digest());
-				return imageCache.computeIfAbsent(hashKey, k -> {
+				var imageData = new AtomicReference<ImageData>();
+				imageCache.compute(hashKey, (k, c) -> {
+					if (c != null) {
+						ImageData prevImageData = c.get();
+						imageData.set(prevImageData);
+						if (prevImageData != null) {
+							return c;
+						}
+					}
 					try (var nativeImage = NativeImage.read(data)) {
 						var size = nativeImage.getWidth() * nativeImage.getHeight() * nativeImage.format().components();
 						var src = MemoryUtil.memByteBuffer(nativeImage.getPointer(), size);
 						var dst = ByteBuffer.allocateDirect(size);
 						dst.put(src);
 						dst.flip();
-						return new SoftReference<>(new ImageData(
+						ImageData newImageData = new ImageData(
 							dst,
 							nativeImage.getWidth(),
 							nativeImage.getHeight(),
 							nativeImage.format()
-						));
+						);
+						imageData.set(newImageData);
+						return new SoftReference<>(newImageData);
 					} catch (IOException e) {
 						throw new RuntimeException(e);
 					}
-				}).get();
+				});
+				return imageData.get();
 			} catch (NoSuchAlgorithmException e) {
 				throw new RuntimeException(e);
 			}
