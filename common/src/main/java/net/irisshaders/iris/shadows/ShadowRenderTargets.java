@@ -1,10 +1,12 @@
 package net.irisshaders.iris.shadows;
 
 import com.google.common.collect.ImmutableSet;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.TextureFormat;
+import dev.luna5ama.glwrapper.enums.ImageFormat;
+import dev.luna5ama.glwrapper.objects.TextureObject;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.features.FeatureFlags;
@@ -24,6 +26,10 @@ import java.util.List;
 public class ShadowRenderTargets {
 	private final RenderTarget[] targets;
 	private final PackShadowDirectives shadowDirectives;
+
+	private final TextureObject.Texture2D mainDepthActual;
+	private final TextureObject.Texture2D noTranslucentsActual;
+
 	private final GpuTexture mainDepth;
 	private final GpuTexture noTranslucents;
 	private final GlFramebuffer depthSourceFb;
@@ -52,8 +58,14 @@ public class ShadowRenderTargets {
 		linearFiltered = new boolean[size];
 		buffersToBeCleared = new IntArrayList();
 
-		this.mainDepth = RenderSystem.getDevice().createTexture("Shadow Map", TextureFormat.DEPTH32, resolution, resolution, 1);
-		this.noTranslucents = RenderSystem.getDevice().createTexture("Shadow Map / Opaque", TextureFormat.DEPTH32, resolution, resolution, 1);
+		this.mainDepthActual = new TextureObject.Texture2D();
+		this.noTranslucentsActual = new TextureObject.Texture2D();
+
+		this.mainDepthActual.allocate(1, ImageFormat.Depth32F.INSTANCE, resolution, resolution);
+		this.noTranslucentsActual.allocate(1, ImageFormat.Depth32F.INSTANCE, resolution, resolution);
+
+		this.mainDepth = new GlTexture("Shadow Map", TextureFormat.DEPTH32, resolution,resolution, 1, this.mainDepthActual.getId());
+		this.noTranslucents = new GlTexture("Shadow Map / Opaque", TextureFormat.DEPTH32, resolution, resolution, 1, this.noTranslucentsActual.getId());
 
 		this.noTranslucents.setTextureFilter(FilterMode.NEAREST, false);
 		this.mainDepth.setTextureFilter(FilterMode.NEAREST, false);

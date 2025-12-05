@@ -244,7 +244,7 @@ public class ProgramUniforms {
 	}
 
 	public static class Builder implements DynamicLocationalUniformHolder {
-		private final String name;
+		protected final String name;
 		private final int program;
 
 		private final Map<Integer, String> locations;

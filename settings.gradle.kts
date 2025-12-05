@@ -10,3 +10,5 @@ pluginManagement {
 
 //include("common", "fabric", "neoforge")
 include("common", "fabric")
+
+includeBuild("../glc2vk")

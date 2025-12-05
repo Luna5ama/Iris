@@ -23,6 +23,7 @@ accessible class net/minecraft/client/renderer/texture/SpriteContents$Ticker
 accessible  class   net/minecraft/client/OptionInstance$ValueSet
 extendable  class   net/minecraft/client/OptionInstance
 accessible method com/mojang/blaze3d/opengl/GlProgram <init> (ILjava/lang/String;)V
+accessible method com/mojang/blaze3d/opengl/GlTexture <init> (Ljava/lang/String;Lcom/mojang/blaze3d/textures/TextureFormat;IIII)V
 accessible field com/mojang/blaze3d/opengl/GlProgram uniformsByName Ljava/util/Map;
 accessible field com/mojang/blaze3d/opengl/GlProgram samplers Ljava/util/List;
 accessible field com/mojang/blaze3d/opengl/GlProgram samplerLocations Lit/unimi/dsi/fastutil/ints/IntList;

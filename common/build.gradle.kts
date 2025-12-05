@@ -7,6 +7,8 @@ plugins {
 
 repositories {
     mavenLocal()
+    maven("https://maven.luna5ama.dev")
+    mavenCentral()
     maven("https://maven.parchmentmc.org/")
 
     exclusiveContent {
@@ -59,11 +61,16 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:$FABRIC_LOADER_VERSION")
 
     modCompileOnly("net.fabricmc.fabric-api:fabric-renderer-api-v1:3.2.9+1172e897d7")
+    modCompileOnly("net.fabricmc.fabric-api:fabric-command-api-v1:1.2.70+f71b366f07")
 
     modImplementation(SODIUM_DEPENDENCY_FABRIC)
     modCompileOnly("org.antlr:antlr4-runtime:4.13.1")
     modCompileOnly("io.github.douira:glsl-transformer:2.0.1")
     modCompileOnly("org.anarres:jcpp:1.4.14")
+
+    compileOnly("dev.luna5ama:gl-wrapper-core:1.1.0")
+    compileOnly("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
+    compileOnly("dev.luna5ama:glc2vk-capture")
 
     compileOnly(files(rootDir.resolve("DHApi.jar")))
 }
