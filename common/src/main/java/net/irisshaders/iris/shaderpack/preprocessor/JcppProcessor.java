@@ -9,22 +9,31 @@ import org.anarres.cpp.Preprocessor;
 import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
+import java.lang.ref.SoftReference;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class JcppProcessor {
-	private static final ConcurrentHashMap<Pair<String, List<StringPair>>, String> CACHE = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<Pair<String, List<StringPair>>, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
 
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, List<StringPair> environmentDefines) {
-		if (CACHE.size() > 65536) {
+		if (CACHE.size() > 1024) {
 			CACHE.clear();
 			System.out.println("JCPP cache cleared");
 		}
 
 		Pair<String, List<StringPair>> key = new ObjectObjectImmutablePair<>(source, environmentDefines);
 
-		return CACHE.computeIfAbsent(key, k -> glslPreprocessSourceUncached(source, environmentDefines));
+		return CACHE.compute(key, (k, v) -> {
+			String cached = v == null ? null : v.get();
+			if (cached != null) {
+				return v;
+			} else {
+				String processed = glslPreprocessSourceUncached(source, environmentDefines);
+				return new SoftReference<>(processed);
+			}
+		}).get();
 	}
 
 	// Derived from GlShader from Canvas, licenced under LGPL
