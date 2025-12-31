@@ -515,10 +515,10 @@ public class ShaderProperties {
 				String[] parts = value.split(" ");
 				String key2 = key.substring(6);
 
-				if (irisCustomImages.size() > 15) {
-					Iris.logger.error("Only up to 16 images are allowed, but tried to add another image! " + key);
-					return;
-				}
+//				if (irisCustomImages.size() > 31) {
+//					Iris.logger.error("Only up to 16 images are allowed, but tried to add another image! " + key);
+//					return;
+//				}
 
 				ImageInformation image;
 
