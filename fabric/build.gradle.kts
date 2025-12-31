@@ -90,16 +90,19 @@ dependencies {
     implementAndIncludeTransitive("dev.luna5ama:glc2vk-common")
     implementAndIncludeTransitive("dev.luna5ama:glc2vk-capture")
 
-    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
-    implementAndIncludeTransitive("commons-codec:commons-codec:1.19.0")
-    implementAndIncludeTransitive("commons-io:commons-io:2.20.0")
-    implementAndIncludeTransitive("org.apache.commons:commons-lang3:3.18.0")
+//    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
+//    implementAndIncludeTransitive("commons-codec:commons-codec:1.19.0")
+//    implementAndIncludeTransitive("commons-io:commons-io:2.20.0")
+//    implementAndIncludeTransitive("org.apache.commons:commons-lang3:3.18.0")
 
+    implementAndIncludeTransitive("org.jetbrains:annotations:13.0")
     implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib:2.2.21")
     implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.21")
     implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.21")
+    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1")
     implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
     implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
     implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1")
     implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 

@@ -73,10 +73,13 @@ public class GlTexture extends GlResource implements TextureAccess {
 		TextureUploadHelper.resetTextureUploadState();
 
 		ByteBuffer buffer = MemoryUtil.memAlloc(pixels.length);
-		buffer.put(pixels);
-		buffer.flip();
-		target.apply(this.getGlId(), sizeX, sizeY, sizeZ, internalFormat, format, pixelType, buffer);
-		MemoryUtil.memFree(buffer);
+		try {
+			buffer.put(pixels);
+			buffer.flip();
+			target.apply(this.getGlId(), sizeX, sizeY, sizeZ, internalFormat, format, pixelType, buffer);
+		} finally {
+			MemoryUtil.memFree(buffer);
+		}
 
 		int texture = this.getGlId();
 

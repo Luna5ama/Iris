@@ -45,6 +45,7 @@ import org.antlr.v4.runtime.Token;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.lang.ref.SoftReference;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -82,7 +83,7 @@ public class TransformPatcher {
 		}
 	};
 	private static final boolean useCache = true;
-	private static final Map<CacheKey, Map<PatchShaderType, String>> cache = new LRUCache<>(400);
+	private static final Map<CacheKey, SoftReference<Map<PatchShaderType, String>>> cache = new LRUCache<>(256);
 	private static final List<String> internalPrefixes = List.of("iris_", "irisMain", "moj_import");
 	private static final Pattern versionPattern = Pattern.compile("#version\\s+(\\d+)", Pattern.DOTALL);
 	private static final EnumASTTransformer<Parameters, PatchShaderType> transformer;
@@ -238,8 +239,10 @@ public class TransformPatcher {
 		Map<PatchShaderType, String> result = null;
 		if (useCache) {
 			key = new CacheKey(parameters, vertex, geometry, tessControl, tessEval, fragment);
-			if (cache.containsKey(key)) {
-				result = cache.get(key);
+			var attempt = cache.get(key);
+			var attemptResult = attempt != null ? attempt.get() : null;
+			if (attemptResult != null) {
+				result = attemptResult;
 			}
 		}
 
@@ -255,7 +258,7 @@ public class TransformPatcher {
 
 			result = transformInternal(name, inputs, parameters);
 			if (useCache) {
-				cache.put(key, result);
+				cache.put(key, new SoftReference<>(result));
 			}
 		}
 		return result;
@@ -272,8 +275,10 @@ public class TransformPatcher {
 		Map<PatchShaderType, String> result = null;
 		if (useCache) {
 			key = new CacheKey(parameters, compute);
-			if (cache.containsKey(key)) {
-				result = cache.get(key);
+			var attempt = cache.get(key);
+			var attemptResult = attempt != null ? attempt.get() : null;
+			if (attemptResult != null) {
+				result = attemptResult;
 			}
 		}
 
@@ -285,7 +290,7 @@ public class TransformPatcher {
 
 			result = transformInternal(name, inputs, parameters);
 			if (useCache) {
-				cache.put(key, result);
+				cache.put(key, new SoftReference<>(result));
 			}
 		}
 		return result;
