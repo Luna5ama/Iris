@@ -1,5 +1,8 @@
 package net.irisshaders.iris.shaderpack.preprocessor;
 
+import com.google.common.hash.HashCode;
+import com.google.common.hash.Hashing;
+import it.unimi.dsi.fastutil.HashCommon;
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
 import net.irisshaders.iris.helpers.StringPair;
@@ -10,11 +13,12 @@ import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
 import java.lang.ref.SoftReference;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class JcppProcessor {
-	private static final ConcurrentHashMap<Pair<String, List<StringPair>>, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<Pair<HashCode, List<StringPair>>, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
 
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, List<StringPair> environmentDefines) {
@@ -23,7 +27,10 @@ public class JcppProcessor {
 			System.out.println("JCPP cache cleared");
 		}
 
-		Pair<String, List<StringPair>> key = new ObjectObjectImmutablePair<>(source, environmentDefines);
+		var key = new ObjectObjectImmutablePair<>(
+			Hashing.sha512().hashString(source, StandardCharsets.UTF_8),
+			environmentDefines
+		);
 
 		return CACHE.compute(key, (k, v) -> {
 			String cached = v == null ? null : v.get();
