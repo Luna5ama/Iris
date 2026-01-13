@@ -563,6 +563,7 @@ public class Iris {
 	}
 
 	public static void reload() throws IOException {
+		long time = System.nanoTime();
 		// allows shaderpacks to be changed at runtime
 		irisConfig.initialize();
 
@@ -577,6 +578,8 @@ public class Iris {
 		if (Minecraft.getInstance().level != null) {
 			Iris.getPipelineManager().preparePipeline(Iris.getCurrentDimension());
 		}
+		long elapsed = System.nanoTime() - time;
+		System.out.printf("Reloaded shaders in %.2f ms%n", elapsed / 1_000_000.0);
 	}
 
 	/**
