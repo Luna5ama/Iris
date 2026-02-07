@@ -872,6 +872,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	@Override
 	public void beginLevelRendering() {
 		isRenderingWorld = true;
+		IrisRenderSystem.startCapture();
 
 		if (!initializedBlockIds) {
 			WorldRenderingSettings.INSTANCE.setBlockStateIds(
@@ -1095,6 +1096,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		removePhaseIfNeeded();
 		compositeRenderer.renderAll();
 		finalPassRenderer.renderFinalPass();
+		IrisRenderSystem.endCapture();
 	}
 
 	@Override

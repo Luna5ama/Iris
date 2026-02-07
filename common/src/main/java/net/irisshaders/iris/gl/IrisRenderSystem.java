@@ -4,16 +4,20 @@ import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexSorting;
+import dev.luna5ama.glc2vk.capture.CaptureKt;
+import dev.luna5ama.glc2vk.capture.ShaderInfo;
+import dev.luna5ama.glc2vk.capture.ShaderSourceContext;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.sampler.SamplerLimits;
+import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.mixin.GlStateManagerAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.PerspectiveProjectionMatrixBuffer;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
@@ -35,6 +39,8 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.file.Path;
+import java.util.EnumMap;
 
 /**
  * This class is responsible for abstracting calls to OpenGL and asserting that calls are run on the render thread.
@@ -52,6 +58,24 @@ public class IrisRenderSystem {
 	private static int backupPolygonMode = GL43C.GL_FILL;
 	private static int[] samplers;
 	private static final IntList textureToUnswizzle = new IntArrayList();
+
+	private record CaptureData(Path path, String passName) {}
+
+	private static CaptureData pendingCapture = null;
+	private static CaptureData currentCapture = null;
+
+	public static void prepareCapture(@NotNull Path path, String passName) {
+		pendingCapture = new CaptureData(path, passName);
+	}
+
+	public static void startCapture() {
+		currentCapture = pendingCapture;
+		pendingCapture = null;
+	}
+
+	public static void endCapture() {
+		currentCapture = null;
+	}
 
 	public static void initRenderer() {
 		if (GL.getCapabilities().OpenGL45) {
@@ -318,7 +342,23 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchCompute(Vector3i workGroups) {
-		GL45C.glDispatchCompute(workGroups.x, workGroups.y, workGroups.z);
+		dispatchCompute(workGroups.x, workGroups.y, workGroups.z);
+	}
+
+	public static void dispatchCompute(EnumMap<ShaderType, String> sources, String passName, Vector3i workGroups) {
+		CaptureData captureData = currentCapture;
+		if (captureData == null	|| !captureData.passName.equals(passName)) {
+			dispatchCompute(workGroups);
+			return;
+		}
+
+		String computeSource = sources.get(ShaderType.COMPUTE);
+		ShaderSourceContext sourceContext = new ShaderSourceContext(computeSource);
+		sourceContext.patchShaderForVulkan();
+		ShaderInfo shaderInfo = sourceContext.toShaderInfo();
+
+		CaptureKt.captureGlDispatchCompute(shaderInfo, captureData.path, workGroups.x, workGroups.y, workGroups.z);
+		currentCapture = null;
 	}
 
 	public static void memoryBarrier(int barriers) {
@@ -491,6 +531,22 @@ public class IrisRenderSystem {
 
 	public static void dispatchComputeIndirect(long offset) {
 		GL43C.glDispatchComputeIndirect(offset);
+	}
+
+	public static void dispatchComputeIndirect(EnumMap<ShaderType, String> sources, String passName, long offset) {
+		CaptureData captureData = currentCapture;
+		if (captureData == null	|| !captureData.passName.equals(passName)) {
+			dispatchComputeIndirect(offset);
+			return;
+		}
+
+		String computeSource = sources.get(ShaderType.COMPUTE);
+		ShaderSourceContext sourceContext = new ShaderSourceContext(computeSource);
+		sourceContext.patchShaderForVulkan();
+		ShaderInfo shaderInfo = sourceContext.toShaderInfo();
+
+		CaptureKt.captureGlDispatchComputeIndirect(shaderInfo, captureData.path, offset);
+		currentCapture = null;
 	}
 
 	public static void bindBuffer(int target, int buffer) {

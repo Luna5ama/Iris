@@ -53,10 +53,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -451,7 +454,11 @@ public class ShaderPack {
 		return Optional.of(properties);
 	}
 
-	private static Map<NamespacedId, String> parseDimensionMap(Properties properties, String keyPrefix, String fileName) {
+	private static Map<NamespacedId, String> parseDimensionMap(
+		Properties properties,
+		String keyPrefix,
+		String fileName
+	) {
 		Map<NamespacedId, String> overrides = new Object2ObjectArrayMap<>();
 
 		properties.forEach((keyObject, valueObject) -> {
@@ -477,8 +484,10 @@ public class ShaderPack {
 	}
 
 	@Nullable
-	private static ProgramSet loadOverrides(boolean has, AbsolutePackPath path, Function<AbsolutePackPath, String> sourceProvider,
-											ShaderProperties shaderProperties, ShaderPack pack) {
+	private static ProgramSet loadOverrides(
+		boolean has, AbsolutePackPath path, Function<AbsolutePackPath, String> sourceProvider,
+		ShaderProperties shaderProperties, ShaderPack pack
+	) {
 		if (has) {
 			return new ProgramSet(path, sourceProvider, shaderProperties, pack);
 		}
@@ -583,10 +592,21 @@ public class ShaderPack {
 				}
 			}
 
+			Path pathData = root.resolve(path);
 			if (definition instanceof TextureDefinition.PNGDefinition) {
-				customTextureData = CustomTextureData.PngData.getOrCreate(new TextureFilteringData(blur, clamp), root.resolve(path));
+				customTextureData = CustomTextureData.PngData.getOrCreate(new TextureFilteringData(blur, clamp), pathData);
 			} else if (definition instanceof TextureDefinition.RawDefinition rawDefinition) {
-				byte[] content = Files.readAllBytes(root.resolve(path));
+				long fileSize = Files.size(pathData);
+				var content = ByteBuffer.allocateDirect((int) fileSize);
+				try (FileChannel channel = FileChannel.open(pathData, StandardOpenOption.READ)) {
+					channel.read(content);
+					content.flip();
+				} catch (UnsupportedOperationException ignored) {
+					try (var channel = Files.newByteChannel(pathData, StandardOpenOption.READ)) {
+						channel.read(content);
+						content.flip();
+					}
+				}
 				customTextureData = switch (rawDefinition.getTarget()) {
 					case TEXTURE_1D ->
 						new CustomTextureData.RawData1D(content, new TextureFilteringData(blur, clamp), rawDefinition.getInternalFormat(), rawDefinition.getFormat(), rawDefinition.getPixelType(), rawDefinition.getSizeX());

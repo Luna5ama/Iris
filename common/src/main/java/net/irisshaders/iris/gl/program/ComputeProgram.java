@@ -4,6 +4,7 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
+import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.shaderpack.FilledIndirectPointer;
 import net.irisshaders.iris.shaderpack.parsing.ComputeDirectiveParser;
@@ -13,7 +14,10 @@ import org.joml.Vector3i;
 import org.lwjgl.opengl.GL43C;
 import org.lwjgl.opengl.GL46C;
 
+import java.util.EnumMap;
+
 public final class ComputeProgram extends GlResource {
+	private final String name;
 	private final ProgramUniforms uniforms;
 	private final ProgramSamplers samplers;
 	private final ProgramImages images;
@@ -24,15 +28,18 @@ public final class ComputeProgram extends GlResource {
 	private float cachedHeight;
 	private Vector3i cachedWorkGroups;
 	private FilledIndirectPointer indirectPointer;
+	private final EnumMap<ShaderType, String> sources;
 
-	ComputeProgram(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+	ComputeProgram(String name, int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images, EnumMap<ShaderType, String> sources) {
 		super(program);
+		this.name = name;
 
 		localSize = new int[3];
 		IrisRenderSystem.getProgramiv(program, GL43C.GL_COMPUTE_WORK_GROUP_SIZE, localSize);
 		this.uniforms = uniforms;
 		this.samplers = samplers;
 		this.images = images;
+		this.sources = sources;
 	}
 
 	public static void unbind() {
@@ -80,9 +87,9 @@ public final class ComputeProgram extends GlResource {
 
 		if (indirectPointer != null) {
 			IrisRenderSystem.bindBuffer(GL46C.GL_DISPATCH_INDIRECT_BUFFER, indirectPointer.buffer());
-			IrisRenderSystem.dispatchComputeIndirect(indirectPointer.offset());
+			IrisRenderSystem.dispatchComputeIndirect(sources, name, indirectPointer.offset());
 		} else {
-			IrisRenderSystem.dispatchCompute(getWorkGroups(width, height));
+			IrisRenderSystem.dispatchCompute(sources, name, getWorkGroups(width, height));
 		}
 	}
 

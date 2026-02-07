@@ -34,8 +34,8 @@ public class NativeImageBackedCustomTexture extends DynamicTexture implements Te
 			IrisRenderSystem.texParameteri(getId(), GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, GL13C.GL_CLAMP_TO_EDGE);
 		}
 
-		this.shouldBlur = textureData.getFilteringData().shouldBlur();
-		this.shouldClamp = textureData.getFilteringData().shouldClamp();
+		this.shouldBlur = filteringData.shouldBlur();
+		this.shouldClamp = filteringData.shouldClamp();
 	}
 
 	private int getId() {

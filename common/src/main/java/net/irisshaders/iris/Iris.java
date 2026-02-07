@@ -6,10 +6,13 @@ import com.mojang.blaze3d.opengl.GlDevice;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
 import net.irisshaders.iris.config.IrisConfig;
 import net.irisshaders.iris.gl.GLDebug;
+import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
 import net.irisshaders.iris.gl.shader.StandardMacros;
@@ -43,6 +46,7 @@ import net.minecraft.util.Util;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -813,6 +817,19 @@ public class Iris {
 		}
 
 		updateChecker.checkForUpdates(irisConfig);
+
+		CommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext, selection) -> {
+			dispatcher.register(
+				Commands.literal("capture")
+					.then(Commands.argument("pass", StringArgumentType.word())
+						.executes(ctx -> {
+							String pass = StringArgumentType.getString(ctx, "pass");
+							IrisRenderSystem.prepareCapture(Path.of("glc2vk"), pass);
+							return 1;
+						})
+					)
+			);
+		});
 
 		initialized = true;
 	}

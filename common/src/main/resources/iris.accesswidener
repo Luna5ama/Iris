@@ -15,6 +15,7 @@ accessible class net/minecraft/client/renderer/texture/SpriteContents$FrameInfo
 accessible  class   net/minecraft/client/OptionInstance$ValueSet
 extendable  class   net/minecraft/client/OptionInstance
 accessible method com/mojang/blaze3d/opengl/GlProgram <init> (ILjava/lang/String;)V
+accessible method com/mojang/blaze3d/opengl/GlTexture <init> (ILjava/lang/String;Lcom/mojang/blaze3d/textures/TextureFormat;IIIII)V
 accessible field com/mojang/blaze3d/opengl/GlProgram uniformsByName Ljava/util/Map;
 accessible  class   net/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection$RebuildTask
 extendable  class   net/minecraft/core/RegistryAccess$RegistryEntry

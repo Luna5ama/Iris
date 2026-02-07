@@ -2,6 +2,7 @@ package net.irisshaders.iris.gl.program;
 
 import com.google.common.collect.ImmutableSet;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.image.ImageHolder;
 import net.irisshaders.iris.gl.sampler.GlSampler;
@@ -15,6 +16,8 @@ import net.irisshaders.iris.gl.texture.InternalTextureFormat;
 import net.irisshaders.iris.gl.texture.TextureType;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumMap;
+import java.util.List;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -22,13 +25,15 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 	private final int program;
 	private final ProgramSamplers.Builder samplers;
 	private final ProgramImages.Builder images;
+	private final EnumMap<ShaderType, String> sources;
 
-	private ProgramBuilder(String name, int program, ImmutableSet<Integer> reservedTextureUnits) {
+	private ProgramBuilder(String name, int program, ImmutableSet<Integer> reservedTextureUnits, EnumMap<ShaderType, String> sources) {
 		super(name, program);
 
 		this.program = program;
 		this.samplers = ProgramSamplers.builder(program, reservedTextureUnits);
 		this.images = ProgramImages.builder(program);
+		this.sources = sources;
 	}
 
 	public static ProgramBuilder begin(String name, @Nullable String vertexSource, @Nullable String geometrySource,
@@ -65,7 +70,14 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 
 		fragment.destroy();
 
-		return new ProgramBuilder(name, programId, reservedTextureUnits);
+		EnumMap<ShaderType, String> sources = new EnumMap<>(ShaderType.class);
+		sources.put(ShaderType.VERTEX, vertexSource);
+		if (geometrySource != null) {
+			sources.put(ShaderType.GEOMETRY, geometrySource);
+		}
+		sources.put(ShaderType.FRAGMENT, fragmentSource);
+
+		return new ProgramBuilder(name, programId, reservedTextureUnits, sources);
 	}
 
 	public static ProgramBuilder beginCompute(String name, @Nullable String source, ImmutableSet<Integer> reservedTextureUnits) {
@@ -81,7 +93,10 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 
 		compute.destroy();
 
-		return new ProgramBuilder(name, programId, reservedTextureUnits);
+		EnumMap<ShaderType, String> sources = new EnumMap<>(ShaderType.class);
+		sources.put(ShaderType.COMPUTE, source);
+
+		return new ProgramBuilder(name, programId, reservedTextureUnits, sources);
 	}
 
 	private static GlShader buildShader(ShaderType shaderType, String name, @Nullable String source) {
@@ -103,7 +118,7 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 	}
 
 	public ComputeProgram buildCompute() {
-		return new ComputeProgram(program, super.buildUniforms(), this.samplers.build(), this.images.build());
+		return new ComputeProgram(name, program, super.buildUniforms(), this.samplers.build(), this.images.build(), this.sources);
 	}
 
 	@Override
