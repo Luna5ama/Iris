@@ -315,10 +315,12 @@ public final class GLDebug {
 	}
 
 	public static void pushGroup(int id, String name) {
+		IrisCaptureManager.pushDebugLabel(name);
 		debugState.pushGroup(id, name);
 	}
 
 	public static void popGroup() {
+		IrisCaptureManager.popDebugLabel();
 		debugState.popGroup();
 	}
 

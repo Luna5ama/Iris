@@ -12,6 +12,8 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
 import net.irisshaders.iris.config.IrisConfig;
 import net.irisshaders.iris.gl.GLDebug;
+import net.irisshaders.iris.gl.IrisCaptureManager;
+import net.irisshaders.iris.gl.IrisCaptureControlServer;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
@@ -827,12 +829,27 @@ public class Iris {
 					.then(Commands.argument("pass", StringArgumentType.word())
 						.executes(ctx -> {
 							String pass = StringArgumentType.getString(ctx, "pass");
-							IrisRenderSystem.prepareCapture(Path.of("glc2vk"), pass);
+							Path path = IrisCaptureManager.defaultOutputPath(pass);
+							IrisRenderSystem.prepareCapture(path, pass);
+							ctx.getSource().sendSuccess(() -> Component.literal("Queued glc2vk capture: " + path), false);
+							return 1;
+						})
+					)
+			);
+			dispatcher.register(
+				Commands.literal("capturemulti")
+					.then(Commands.argument("type", StringArgumentType.word())
+						.executes(ctx -> {
+							String type = StringArgumentType.getString(ctx, "type");
+							Path path = IrisCaptureManager.defaultOutputPath(type);
+							IrisRenderSystem.prepareMultiCapture(path, type);
+							ctx.getSource().sendSuccess(() -> Component.literal("Queued glc2vk multi capture: " + path), false);
 							return 1;
 						})
 					)
 			);
 		});
+		IrisCaptureControlServer.start();
 
 		initialized = true;
 	}

@@ -4,9 +4,6 @@ import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import dev.luna5ama.glc2vk.capture.CaptureKt;
-import dev.luna5ama.glc2vk.capture.ShaderInfo;
-import dev.luna5ama.glc2vk.capture.ShaderSourceContext;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.Iris;
@@ -59,22 +56,20 @@ public class IrisRenderSystem {
 	private static int[] samplers;
 	private static final IntList textureToUnswizzle = new IntArrayList();
 
-	private record CaptureData(Path path, String passName) {}
-
-	private static CaptureData pendingCapture = null;
-	private static CaptureData currentCapture = null;
-
 	public static void prepareCapture(@NotNull Path path, String passName) {
-		pendingCapture = new CaptureData(path, passName);
+		IrisCaptureManager.prepareSingleCapture(path, passName);
+	}
+
+	public static void prepareMultiCapture(@NotNull Path path, String programType) {
+		IrisCaptureManager.prepareMultiCapture(path, programType);
 	}
 
 	public static void startCapture() {
-		currentCapture = pendingCapture;
-		pendingCapture = null;
+		IrisCaptureManager.startFrame();
 	}
 
 	public static void endCapture() {
-		currentCapture = null;
+		IrisCaptureManager.endFrame();
 	}
 
 	public static void initRenderer() {
@@ -346,19 +341,9 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchCompute(EnumMap<ShaderType, String> sources, String passName, Vector3i workGroups) {
-		CaptureData captureData = currentCapture;
-		if (captureData == null	|| !captureData.passName.equals(passName)) {
+		if (!IrisCaptureManager.dispatchCompute(sources, passName, workGroups)) {
 			dispatchCompute(workGroups);
-			return;
 		}
-
-		String computeSource = sources.get(ShaderType.COMPUTE);
-		ShaderSourceContext sourceContext = new ShaderSourceContext(computeSource);
-		sourceContext.patchShaderForVulkan();
-		ShaderInfo shaderInfo = sourceContext.toShaderInfo();
-
-		CaptureKt.captureGlDispatchCompute(shaderInfo, captureData.path, workGroups.x, workGroups.y, workGroups.z);
-		currentCapture = null;
 	}
 
 	public static void memoryBarrier(int barriers) {
@@ -534,19 +519,9 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchComputeIndirect(EnumMap<ShaderType, String> sources, String passName, long offset) {
-		CaptureData captureData = currentCapture;
-		if (captureData == null	|| !captureData.passName.equals(passName)) {
+		if (!IrisCaptureManager.dispatchComputeIndirect(sources, passName, offset)) {
 			dispatchComputeIndirect(offset);
-			return;
 		}
-
-		String computeSource = sources.get(ShaderType.COMPUTE);
-		ShaderSourceContext sourceContext = new ShaderSourceContext(computeSource);
-		sourceContext.patchShaderForVulkan();
-		ShaderInfo shaderInfo = sourceContext.toShaderInfo();
-
-		CaptureKt.captureGlDispatchComputeIndirect(shaderInfo, captureData.path, offset);
-		currentCapture = null;
 	}
 
 	public static void bindBuffer(int target, int buffer) {

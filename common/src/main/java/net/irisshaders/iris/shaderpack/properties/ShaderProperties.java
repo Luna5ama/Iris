@@ -404,8 +404,8 @@ public class ShaderProperties {
 						name = parts[1];
 					}
 
-					if (trueIndex > 12) {
-						Iris.logger.fatal("SSBO's cannot use buffer numbers higher than 12, they're reserved!");
+					if (trueIndex > 16) {
+						Iris.logger.fatal("SSBO's cannot use buffer numbers higher than 16, they're reserved!");
 						return;
 					}
 
