@@ -44,3 +44,5 @@ run/
 .DS_Store
 .AppleDouble
 .LSOverride
+
+.omo/
