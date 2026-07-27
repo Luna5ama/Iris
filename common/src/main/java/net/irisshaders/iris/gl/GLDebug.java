@@ -5,6 +5,7 @@
 
 package net.irisshaders.iris.gl;
 
+import dev.luna5ama.vibris.capture.CaptureKt;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import org.lwjgl.opengl.AMDDebugOutput;
@@ -315,12 +316,12 @@ public final class GLDebug {
 	}
 
 	public static void pushGroup(int id, String name) {
-		IrisCaptureManager.pushDebugLabel(name);
+		CaptureKt.captureDebugLabelPush(name);
 		debugState.pushGroup(id, name);
 	}
 
 	public static void popGroup() {
-		IrisCaptureManager.popDebugLabel();
+		CaptureKt.captureDebugLabelPop();
 		debugState.popGroup();
 	}
 

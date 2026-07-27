@@ -7,13 +7,13 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import dev.luna5ama.vibris.capture.CaptureControlServer;
+import dev.luna5ama.vibris.capture.CaptureManager;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
 import net.irisshaders.iris.config.IrisConfig;
 import net.irisshaders.iris.gl.GLDebug;
-import net.irisshaders.iris.gl.IrisCaptureManager;
-import net.irisshaders.iris.gl.IrisCaptureControlServer;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
@@ -90,6 +90,15 @@ public class Iris {
 	 */
 	public static final String MODNAME = "Iris";
 	public static final IrisLogging logger = new IrisLogging(MODNAME);
+	private static final CaptureManager CAPTURE_MANAGER = new CaptureManager();
+	private static final CaptureControlServer CAPTURE_CONTROL_SERVER = new CaptureControlServer(
+		CAPTURE_MANAGER,
+		runnable -> Minecraft.getInstance().execute(runnable),
+		() -> {
+			reload();
+			return null;
+		}
+	);
 	public static final boolean IS_FOOL;
 	private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
 	// Change this for snapshots!
@@ -118,6 +127,10 @@ public class Iris {
 	private static UpdateChecker updateChecker;
 	private static boolean fallback;
 	private static boolean loadShaderPackWhenPossible;
+
+	public static CaptureManager getCaptureManager() {
+		return CAPTURE_MANAGER;
+	}
 
 	static {
 		if (!BuildConfig.ACTIVATE_RENDERDOC && IrisPlatformHelpers.getInstance().isDevelopmentEnvironment() && System.getProperty("user.name").contains("ims") && Util.getPlatform() == Util.OS.LINUX) {
@@ -829,7 +842,7 @@ public class Iris {
 					.then(Commands.argument("pass", StringArgumentType.word())
 						.executes(ctx -> {
 							String pass = StringArgumentType.getString(ctx, "pass");
-							Path path = IrisCaptureManager.defaultOutputPath(pass);
+							Path path = CaptureManager.defaultOutputPath(pass);
 							IrisRenderSystem.prepareCapture(path, pass);
 							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris capture: " + path), false);
 							return 1;
@@ -841,7 +854,7 @@ public class Iris {
 					.then(Commands.argument("type", StringArgumentType.word())
 						.executes(ctx -> {
 							String type = StringArgumentType.getString(ctx, "type");
-							Path path = IrisCaptureManager.defaultOutputPath(type);
+							Path path = CaptureManager.defaultOutputPath(type);
 							IrisRenderSystem.prepareMultiCapture(path, type);
 							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris multi capture: " + path), false);
 							return 1;
@@ -849,7 +862,11 @@ public class Iris {
 					)
 			);
 		});
-		IrisCaptureControlServer.start();
+		try {
+			CAPTURE_CONTROL_SERVER.start(Path.of("iris-capture-control.json"));
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to start Iris capture control server", e);
+		}
 
 		initialized = true;
 	}

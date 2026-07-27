@@ -57,19 +57,19 @@ public class IrisRenderSystem {
 	private static final IntList textureToUnswizzle = new IntArrayList();
 
 	public static void prepareCapture(@NotNull Path path, String passName) {
-		IrisCaptureManager.prepareSingleCapture(path, passName);
+		Iris.getCaptureManager().prepareSingleCapture(path, passName);
 	}
 
 	public static void prepareMultiCapture(@NotNull Path path, String programType) {
-		IrisCaptureManager.prepareMultiCapture(path, programType);
+		Iris.getCaptureManager().prepareMultiCapture(path, programType);
 	}
 
 	public static void startCapture() {
-		IrisCaptureManager.startFrame();
+		Iris.getCaptureManager().startFrame();
 	}
 
 	public static void endCapture() {
-		IrisCaptureManager.endFrame();
+		Iris.getCaptureManager().endFrame();
 	}
 
 	public static void initRenderer() {
@@ -341,7 +341,9 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchCompute(EnumMap<ShaderType, String> sources, String passName, Vector3i workGroups) {
-		if (!IrisCaptureManager.dispatchCompute(sources, passName, workGroups)) {
+		if (!Iris.getCaptureManager().dispatchCompute(
+			sources.get(ShaderType.COMPUTE), passName, workGroups.x, workGroups.y, workGroups.z
+		)) {
 			dispatchCompute(workGroups);
 		}
 	}
@@ -519,7 +521,7 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchComputeIndirect(EnumMap<ShaderType, String> sources, String passName, long offset) {
-		if (!IrisCaptureManager.dispatchComputeIndirect(sources, passName, offset)) {
+		if (!Iris.getCaptureManager().dispatchComputeIndirect(sources.get(ShaderType.COMPUTE), passName, offset)) {
 			dispatchComputeIndirect(offset);
 		}
 	}
