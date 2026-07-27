@@ -1,8 +1,8 @@
 package net.irisshaders.iris.gl;
 
-import dev.luna5ama.glc2vk.capture.CaptureKt;
-import dev.luna5ama.glc2vk.capture.ShaderInfo;
-import dev.luna5ama.glc2vk.capture.ShaderSourceContext;
+import dev.luna5ama.vibris.capture.CaptureKt;
+import dev.luna5ama.vibris.capture.ShaderInfo;
+import dev.luna5ama.vibris.capture.ShaderSourceContext;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.shader.ShaderType;
 import org.jetbrains.annotations.NotNull;
@@ -28,7 +28,7 @@ public final class IrisCaptureManager {
 	}
 
 	public static synchronized Path defaultOutputPath(String name) {
-		return Path.of("glc2vk", name + "-" + TIMESTAMP_FORMAT.format(LocalDateTime.now()));
+		return Path.of("vibris", name + "-" + TIMESTAMP_FORMAT.format(LocalDateTime.now()));
 	}
 
 	public static synchronized void prepareSingleCapture(@NotNull Path path, @NotNull String passName) {
@@ -51,7 +51,7 @@ public final class IrisCaptureManager {
 		pendingCapture = null;
 		try {
 			CaptureKt.beginGlCapture(activeCapture.request.path);
-			Iris.logger.info("Started glc2vk capture: {}", activeCapture.request.path);
+			Iris.logger.info("Started vibris capture: {}", activeCapture.request.path);
 		} catch (RuntimeException e) {
 			lastError = e.getMessage();
 			activeCapture = null;
@@ -61,9 +61,9 @@ public final class IrisCaptureManager {
 
 	public static synchronized void endFrame() {
 		if (activeCapture != null && activeCapture.request.mode == CaptureMode.MULTI) {
-			finishActiveCapture("Finished multi-pass glc2vk capture");
+			finishActiveCapture("Finished multi-pass vibris capture");
 		} else if (activeCapture != null && activeCapture.request.mode == CaptureMode.SINGLE) {
-			finishActiveCapture("Finished unmatched single-pass glc2vk capture");
+			finishActiveCapture("Finished unmatched single-pass vibris capture");
 		}
 	}
 
@@ -104,7 +104,7 @@ public final class IrisCaptureManager {
 		CaptureKt.captureGlDispatchCompute(shaderInfo, workGroups.x, workGroups.y, workGroups.z);
 		session.capturedDispatches++;
 		if (session.request.mode == CaptureMode.SINGLE) {
-			finishActiveCapture("Finished single-pass glc2vk capture");
+			finishActiveCapture("Finished single-pass vibris capture");
 		}
 		return true;
 	}
@@ -119,7 +119,7 @@ public final class IrisCaptureManager {
 		CaptureKt.captureGlDispatchComputeIndirect(shaderInfo, offset);
 		session.capturedDispatches++;
 		if (session.request.mode == CaptureMode.SINGLE) {
-			finishActiveCapture("Finished single-pass glc2vk capture");
+			finishActiveCapture("Finished single-pass vibris capture");
 		}
 		return true;
 	}

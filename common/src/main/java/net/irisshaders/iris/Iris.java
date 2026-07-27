@@ -831,7 +831,7 @@ public class Iris {
 							String pass = StringArgumentType.getString(ctx, "pass");
 							Path path = IrisCaptureManager.defaultOutputPath(pass);
 							IrisRenderSystem.prepareCapture(path, pass);
-							ctx.getSource().sendSuccess(() -> Component.literal("Queued glc2vk capture: " + path), false);
+							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris capture: " + path), false);
 							return 1;
 						})
 					)
@@ -843,7 +843,7 @@ public class Iris {
 							String type = StringArgumentType.getString(ctx, "type");
 							Path path = IrisCaptureManager.defaultOutputPath(type);
 							IrisRenderSystem.prepareMultiCapture(path, type);
-							ctx.getSource().sendSuccess(() -> Component.literal("Queued glc2vk multi capture: " + path), false);
+							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris multi capture: " + path), false);
 							return 1;
 						})
 					)

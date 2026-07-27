@@ -15,7 +15,7 @@ TOOLS = [
     },
     {
         "name": "capture_pass",
-        "description": "Queue a glc2vk capture for one compute pass in the next rendered frame.",
+        "description": "Queue a vibris capture for one compute pass in the next rendered frame.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -28,7 +28,7 @@ TOOLS = [
     },
     {
         "name": "capture_multi",
-        "description": "Queue a glc2vk multi-pass compute capture for prepare, begin, deferred, or composite.",
+        "description": "Queue a vibris multi-pass compute capture for prepare, begin, deferred, or composite.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -41,7 +41,7 @@ TOOLS = [
     },
     {
         "name": "status",
-        "description": "Read Iris glc2vk capture status from the running Minecraft client.",
+        "description": "Read Iris vibris capture status from the running Minecraft client.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
 ]
