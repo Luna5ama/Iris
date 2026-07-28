@@ -16,9 +16,8 @@ Iris/
 ├── fabric/        # Active Fabric loader adapter, packaging, and development runs
 ├── neoforge/      # Tracked NeoForge adapter; excluded from the current Gradle settings
 ├── docs/          # User/developer notes and historical changelogs
-├── tools/         # Standalone Iris capture MCP-to-HTTP bridge
 ├── custom_sodium/ # Ignored local Sodium binaries required by this checkout
-└── ../vibris/     # Required composite build for capture dependencies
+└── ../vibris/     # Required composite build providing capture + MCP dependencies and bridge
 ```
 
 Root `src/` is not canonical. Maintained source lives under the loader modules above.
