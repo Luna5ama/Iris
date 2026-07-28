@@ -341,10 +341,15 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchCompute(EnumMap<ShaderType, String> sources, String passName, Vector3i workGroups) {
-		if (!Iris.getCaptureManager().dispatchCompute(
-			sources.get(ShaderType.COMPUTE), passName, workGroups.x, workGroups.y, workGroups.z
-		)) {
-			dispatchCompute(workGroups);
+		Iris.getShaderDebugControl().beginCompute();
+		try {
+			if (!Iris.getCaptureManager().dispatchCompute(
+				sources.get(ShaderType.COMPUTE), passName, workGroups.x, workGroups.y, workGroups.z
+			)) {
+				dispatchCompute(workGroups);
+			}
+		} finally {
+			Iris.getShaderDebugControl().endCompute();
 		}
 	}
 
@@ -521,8 +526,13 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchComputeIndirect(EnumMap<ShaderType, String> sources, String passName, long offset) {
-		if (!Iris.getCaptureManager().dispatchComputeIndirect(sources.get(ShaderType.COMPUTE), passName, offset)) {
-			dispatchComputeIndirect(offset);
+		Iris.getShaderDebugControl().beginCompute();
+		try {
+			if (!Iris.getCaptureManager().dispatchComputeIndirect(sources.get(ShaderType.COMPUTE), passName, offset)) {
+				dispatchComputeIndirect(offset);
+			}
+		} finally {
+			Iris.getShaderDebugControl().endCompute();
 		}
 	}
 

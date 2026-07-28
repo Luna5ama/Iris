@@ -55,6 +55,11 @@ public class MixinGameRenderer {
 		SystemTimeUniforms.TIMER.beginFrame(Util.getNanos());
 	}
 
+	@Inject(method = "render", at = @At("TAIL"))
+	private void iris$finishFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
+		Iris.getShaderDebugControl().tickScreenshot();
+	}
+
 	@Inject(method = "<init>", at = @At("TAIL"))
 	private void iris$logSystem(Minecraft minecraft, ItemInHandRenderer itemInHandRenderer, RenderBuffers renderBuffers, BlockRenderDispatcher blockRenderDispatcher, CallbackInfo ci) {
 		Iris.logger.info("Hardware information:");

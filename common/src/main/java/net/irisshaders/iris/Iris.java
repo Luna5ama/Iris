@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.luna5ama.vibris.capture.CaptureControlServer;
 import dev.luna5ama.vibris.capture.CaptureManager;
+import dev.luna5ama.vibris.capture.ShaderDebugControl;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
@@ -91,13 +92,15 @@ public class Iris {
 	public static final String MODNAME = "Iris";
 	public static final IrisLogging logger = new IrisLogging(MODNAME);
 	private static final CaptureManager CAPTURE_MANAGER = new CaptureManager();
+	private static final ShaderDebugControl SHADER_DEBUG_CONTROL = new ShaderDebugControl(new IrisShaderDebugHost());
 	private static final CaptureControlServer CAPTURE_CONTROL_SERVER = new CaptureControlServer(
 		CAPTURE_MANAGER,
 		runnable -> Minecraft.getInstance().execute(runnable),
 		() -> {
 			reload();
 			return null;
-		}
+		},
+		SHADER_DEBUG_CONTROL
 	);
 	public static final boolean IS_FOOL;
 	private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
@@ -130,6 +133,10 @@ public class Iris {
 
 	public static CaptureManager getCaptureManager() {
 		return CAPTURE_MANAGER;
+	}
+
+	public static ShaderDebugControl getShaderDebugControl() {
+		return SHADER_DEBUG_CONTROL;
 	}
 
 	static {
@@ -386,6 +393,13 @@ public class Iris {
 	}
 
 	private static void handleException(Exception e) {
+		SHADER_DEBUG_CONTROL.recordError(
+			e.getClass().getSimpleName(),
+			e instanceof ShaderCompileException shaderError ? shaderError.getFilename() : "",
+			e.getMessage() == null ? "" : e.getMessage(),
+			Throwables.getStackTraceAsString(e),
+			System.currentTimeMillis()
+		);
 		if (irisConfig.areDebugOptionsEnabled()) {
 			Minecraft.getInstance().setScreen(new DebugLoadFailedGridScreen(Minecraft.getInstance().screen, Component.literal(e instanceof ShaderCompileException ? "Failed to compile shaders" : "Exception"), e));
 		} else {
@@ -582,6 +596,7 @@ public class Iris {
 	}
 
 	public static void reload() throws IOException {
+		SHADER_DEBUG_CONTROL.clearErrors();
 		long time = System.nanoTime();
 		// allows shaderpacks to be changed at runtime
 		irisConfig.initialize();
@@ -867,7 +882,6 @@ public class Iris {
 		} catch (IOException e) {
 			throw new RuntimeException("Failed to start Iris capture control server", e);
 		}
-
 		initialized = true;
 	}
 }

@@ -317,11 +317,13 @@ public final class GLDebug {
 
 	public static void pushGroup(int id, String name) {
 		CaptureKt.captureDebugLabelPush(name);
+		Iris.getShaderDebugControl().pushPass(name);
 		debugState.pushGroup(id, name);
 	}
 
 	public static void popGroup() {
 		CaptureKt.captureDebugLabelPop();
+		Iris.getShaderDebugControl().popPass();
 		debugState.popGroup();
 	}
 

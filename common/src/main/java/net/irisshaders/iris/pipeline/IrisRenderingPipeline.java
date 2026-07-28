@@ -678,6 +678,14 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		return customTextureMap;
 	}
 
+	public RenderTargets getRenderTargets() {
+		return renderTargets;
+	}
+
+	public CustomTextureManager getCustomTextureManager() {
+		return customTextureManager;
+	}
+
 	private ShaderSupplier createShader(String name, ShaderKey key, ProgramSource source, ProgramId programId, AlphaTest fallbackAlpha,
 										VertexFormat vertexFormat, FogMode fogMode,
 										boolean isIntensity, boolean isFullbright, boolean isGlint, boolean isText, boolean isIE) throws IOException {

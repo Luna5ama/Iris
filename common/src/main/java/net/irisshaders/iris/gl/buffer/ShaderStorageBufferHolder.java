@@ -13,6 +13,10 @@ import java.util.List;
 
 public class ShaderStorageBufferHolder {
 	private static final List<ShaderStorageBuffer> ACTIVE_BUFFERS = new ArrayList<>();
+
+	public static List<ShaderStorageBuffer> getActiveBuffers() {
+		return List.copyOf(ACTIVE_BUFFERS);
+	}
 	private int cachedWidth;
 	private int cachedHeight;
 	private ShaderStorageBuffer[] buffers;
