@@ -89,6 +89,7 @@ dependencies {
     implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
     implementAndIncludeTransitive("dev.luna5ama:vibris-common")
     implementAndIncludeTransitive("dev.luna5ama:vibris-capture")
+    implementAndIncludeTransitive("dev.luna5ama:vibris-mcp")
 
 //    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
 //    implementAndIncludeTransitive("commons-codec:commons-codec:1.19.0")

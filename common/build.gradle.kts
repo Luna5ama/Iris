@@ -71,6 +71,7 @@ dependencies {
     compileOnly("dev.luna5ama:gl-wrapper-core:1.1.0")
     compileOnly("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
     compileOnly("dev.luna5ama:vibris-capture")
+    compileOnly("dev.luna5ama:vibris-mcp")
 
     compileOnly(files(rootDir.resolve("DHApi.jar")))
 }
