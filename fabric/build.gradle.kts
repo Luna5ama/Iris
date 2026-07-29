@@ -1,5 +1,6 @@
 import net.fabricmc.loom.task.prod.ClientProductionRunTask
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import java.nio.file.Files
 
 plugins {
     id("java")
@@ -220,6 +221,33 @@ tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
     val receiptFile = providers.gradleProperty("phase4ReceiptFile")
     val commandFile = providers.gradleProperty("phase4CommandFile")
 
+    doFirst {
+        val game = file(gameDirectory.get())
+        val pending = game.resolve("vibris/pending")
+        val artifacts = game.resolve("vibris/artifacts")
+        val shaderpack = game.resolve("shaderpacks/vibris")
+        listOf(pending, artifacts, shaderpack).forEach { Files.createDirectories(it.toPath()) }
+        val serverConfig = game.resolve("config/vibris/server.json")
+        Files.createDirectories(serverConfig.parentFile.toPath())
+        fun jsonPath(value: File): String = value.absolutePath.replace("\\", "\\\\").replace("\"", "\\\"")
+        serverConfig.writeText(
+            """
+            {
+              "schema_version": 1,
+              "listen_address": "127.0.0.1:50051",
+              "pending_shaders_root": "${jsonPath(pending)}",
+              "artifact_root": "${jsonPath(artifacts)}",
+              "artifact_quota_bytes": 3221225472,
+              "shaderpack_root": "${jsonPath(shaderpack)}",
+              "max_source_bytes": 536870912,
+              "max_source_files": 100000,
+              "max_global_queue": 32,
+              "max_actions_per_job": 64
+            }
+            """.trimIndent()
+        )
+    }
+
     mods.from(patchedJar.map { file(it) })
     mods.from(SODIUM_DEPENDENCY_FABRIC)
     runDir.set(layout.dir(gameDirectory.map { file(it) }))
@@ -233,9 +261,7 @@ tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
             "-Dvibris.phase4.scenario=${scenario.get()}",
             "-Dvibris.phase4.eventFile=${file(eventFile.get()).absolutePath}",
             "-Dvibris.phase4.receiptFile=${file(receiptFile.get()).absolutePath}",
-            "-Dvibris.phase4.commandFile=${file(commandFile.get()).absolutePath}",
-            "-Dvibris.pendingShadersRoot=${file(game).resolve("vibris/pending").absolutePath}",
-            "-Dvibris.artifactRoot=${file(game).resolve("vibris/artifacts").absolutePath}"
+            "-Dvibris.phase4.commandFile=${file(commandFile.get()).absolutePath}"
         ) + if (scenario.get() == "g008-c003") {
             listOf("-Dio.grpc.netty.shaded.io.netty.allocator.type=unpooled")
         } else {

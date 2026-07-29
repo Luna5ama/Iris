@@ -35,15 +35,14 @@ public final class IrisVibrisLifecycle {
 				adapter = new ThreadBoundVibrisRuntimeAdapter(
 					new MinecraftVibrisRuntimeHost(gameDirectory), candidateFrames,
 					IrisVibrisPhase4Probe::frameWaitComplete);
-				VibrisBootstrap.Config config = new VibrisBootstrap.Config(
-					integerProperty("vibris.port", 50051),
-					pathProperty("vibris.pendingShadersRoot", Path.of("R:/shaders")),
-					pathProperty("vibris.artifactRoot", Path.of("R:/vibris/artifacts")),
-					gameDirectory.resolve("shaderpacks/vibris"));
-				bootstrap = VibrisBootstrap.start(config, adapter);
+				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
 				frames = candidateFrames;
-				Iris.logger.info("Vibris control service listening on 127.0.0.1:{}", bootstrap.port());
-				IrisVibrisPhase4Probe.serverReady(bootstrap.port(), config.pendingShadersRoot());
+				if (bootstrap.ready()) {
+					Iris.logger.info("Vibris control service listening on 127.0.0.1:{}", bootstrap.port());
+					IrisVibrisPhase4Probe.serverReady(bootstrap.port(), bootstrap.pendingShadersRoot());
+				} else {
+					Iris.logger.warn("Vibris control service is listening but not ready; inspect GetStatus errors.");
+				}
 			} catch (Exception exception) {
 				if (adapter != null) adapter.close();
 				else candidateFrames.close();
@@ -85,18 +84,5 @@ public final class IrisVibrisLifecycle {
 				IrisVibrisPhase4Probe.shutdownComplete();
 			}
 		}
-	}
-
-	private static int integerProperty(String name, int fallback) {
-		String value = System.getProperty(name);
-		if (value == null) return fallback;
-		int parsed = Integer.parseInt(value);
-		if (parsed < 1 || parsed > 65535) throw new IllegalArgumentException(name + " is outside the port range");
-		return parsed;
-	}
-
-	private static Path pathProperty(String name, Path fallback) {
-		String value = System.getProperty(name);
-		return (value == null ? fallback : Path.of(value)).toAbsolutePath().normalize();
 	}
 }
