@@ -623,11 +623,12 @@ public class Iris {
 		boolean loaded = loadExternalShaderpack("vibris");
 		WorldRenderingPipeline replacement = null;
 		if (loaded) {
+			getPipelineManager().destroyPipeline();
 			try {
 				replacement = new IrisRenderingPipeline(currentPack.getProgramSet(dimension));
 			} catch (Exception exception) {
 				handleException(exception);
-				logger.error("Failed to create the candidate Vibris pipeline, keeping the active pipeline.", exception);
+				logger.error("Failed to create the Vibris pipeline, restoring the previous pipeline.", exception);
 			}
 		}
 
@@ -641,7 +642,7 @@ public class Iris {
 		boolean active = loaded && "vibris".equals(currentPackName) && currentPack != null && !fallback &&
 			replacement instanceof IrisRenderingPipeline;
 		if (active) {
-			getPipelineManager().replacePipeline(dimension, replacement);
+			getPipelineManager().installPipeline(dimension, replacement);
 			closeShaderpackFileSystem(previousZipFileSystem);
 			zipFileSystem = null;
 			return ReloadResult.success(diagnostics);
@@ -651,6 +652,13 @@ public class Iris {
 		currentPackName = previousPackName;
 		fallback = previousFallback;
 		zipFileSystem = previousZipFileSystem;
+		boolean restored = true;
+		if (loaded) {
+			WorldRenderingPipeline restoredPipeline = getPipelineManager().preparePipeline(dimension);
+			restored = previousPack == null
+				? restoredPipeline instanceof VanillaRenderingPipeline
+				: restoredPipeline instanceof IrisRenderingPipeline && !fallback;
+		}
 		if (!active && diagnostics.isEmpty()) {
 			diagnostics.add(new ReloadResult.Diagnostic(
 				ReloadResult.Severity.ERROR,
@@ -658,7 +666,9 @@ public class Iris {
 				0,
 				"The fixed Vibris shaderpack did not produce an active Iris pipeline."));
 		}
-		return ReloadResult.failurePreservingActiveState(diagnostics);
+		return restored
+			? ReloadResult.failurePreservingActiveState(diagnostics)
+			: ReloadResult.failure(diagnostics);
 	}
 
 	/**
@@ -867,7 +877,7 @@ public class Iris {
 	 */
 	public void onEarlyInitialize() {
 		IRIS_VERSION = IrisPlatformHelpers.getInstance().getVersion();
-		IrisVibrisLifecycle.initializeProbe();
+		IrisVibrisLifecycle.initializeAutomation();
 
 		updateChecker = new UpdateChecker(IRIS_VERSION);
 

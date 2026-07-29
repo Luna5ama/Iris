@@ -678,7 +678,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		return customTextureMap;
 	}
 
-	public RenderTargets getRenderTargets() {
+	public RenderTargets getRenderTargetsForDebug() {
 		return renderTargets;
 	}
 

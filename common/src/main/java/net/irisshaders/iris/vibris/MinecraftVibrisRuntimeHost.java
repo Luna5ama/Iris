@@ -84,7 +84,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		return contexts.apply(context, cancellation).thenApply(result -> {
 			if (result.successful()) {
 				activeContext = result.context();
-				IrisVibrisPhase4Probe.contextApplied(result.context(), minecraft);
+				IrisVibrisAutomation.contextApplied(result.context(), minecraft);
 			}
 			return result;
 		});
@@ -94,7 +94,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	public ReloadResult reload(CancellationToken cancellation) {
 		cancellation.throwIfCancellationRequested();
 		ReloadResult result = Iris.reloadVibrisShaderpack();
-		IrisVibrisPhase4Probe.shaderReloaded(
+		IrisVibrisAutomation.shaderReloaded(
 			result.successful(),
 			shaderLink,
 			Iris.getPipelineManager().getPipelineNullable(),
@@ -108,7 +108,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		SystemTimeUniforms.COUNTER.reset();
 		SystemTimeUniforms.TIMER.reset();
 		CapturedRenderingState.INSTANCE.resetTextureReloadCount();
-		IrisVibrisPhase4Probe.temporalReset();
+		IrisVibrisAutomation.temporalReset();
 		return new TemporalResetResult(true);
 	}
 
@@ -125,7 +125,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		CancellationToken cancellation
 	) {
 		CaptureResult result = capture.capture(plan, sink, frameId, cancellation);
-		IrisVibrisPhase4Probe.captureComplete(plan, result.frameId());
+		IrisVibrisAutomation.captureComplete(plan, result.frameId());
 		return result;
 	}
 

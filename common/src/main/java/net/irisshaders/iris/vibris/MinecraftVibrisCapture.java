@@ -17,6 +17,7 @@ import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.targets.RenderTargets;
 import net.minecraft.client.Minecraft;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,16 +34,20 @@ final class MinecraftVibrisCapture {
 
 	ResourceCatalog resourceCatalog(long frameId) {
 		List<ResourceCatalog.ResourceDescriptor> resources = new ArrayList<>();
-		resources.add(textureDescriptor(
+		ResourceCatalog.ResourceDescriptor beauty = textureDescriptor(
 			"beauty",
 			ResourceCatalog.ResourceKind.FINAL_FRAMEBUFFER,
 			minecraft.getMainRenderTarget().getColorTexture().iris$getGlId(),
-			frameId));
-		namedTextures().forEach((name, texture) -> resources.add(textureDescriptor(
-			name,
-			ResourceCatalog.ResourceKind.TEXTURE,
-			texture,
-			frameId)));
+			frameId);
+		if (beauty != null) resources.add(beauty);
+		namedTextures().forEach((name, texture) -> {
+			ResourceCatalog.ResourceDescriptor descriptor = textureDescriptor(
+				name,
+				ResourceCatalog.ResourceKind.TEXTURE,
+				texture,
+				frameId);
+			if (descriptor != null) resources.add(descriptor);
+		});
 		namedBuffers().forEach((name, buffer) -> resources.add(new ResourceCatalog.ResourceDescriptor(
 			name,
 			ResourceCatalog.ResourceKind.BUFFER,
@@ -103,7 +108,7 @@ final class MinecraftVibrisCapture {
 			textures.putIfAbsent(texture.getName(), texture.getTextureId());
 		}
 		IrisRenderingPipeline pipeline = pipeline();
-		RenderTargets targets = pipeline.getRenderTargets();
+		RenderTargets targets = pipeline.getRenderTargetsForDebug();
 		textures.put("depthtex0", targets.getDepthTexture().iris$getGlId());
 		textures.put("depthtex1", targets.getDepthTextureNoTranslucents().iris$getGlId());
 		textures.put("depthtex2", targets.getDepthTextureNoHand().iris$getGlId());
@@ -123,13 +128,15 @@ final class MinecraftVibrisCapture {
 		return buffers;
 	}
 
+	@Nullable
 	private static ResourceCatalog.ResourceDescriptor textureDescriptor(
 		String name,
 		ResourceCatalog.ResourceKind kind,
 		int textureId,
 		long frameId
 	) {
-		GlCaptureMetadata metadata = GlArtifactCapture.describeTexture(textureId, 0);
+		GlCaptureMetadata metadata = GlArtifactCapture.describeTextureOrNull(textureId, 0);
+		if (metadata == null) return null;
 		return new ResourceCatalog.ResourceDescriptor(
 			name, kind, metadata.getWidth(), metadata.getHeight(), metadata.getDepth(), 1, 1,
 			metadata.getInternalFormat(), metadata.getChannelCount(), metadata.getScalarType(),

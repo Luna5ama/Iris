@@ -209,18 +209,14 @@ tasks {
     remapJar.get().destinationDirectory = rootDir.resolve("build").resolve("libs")
 }
 
-tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
-    description = "Runs the exact patched Iris JAR in an isolated Phase 4 game directory."
+tasks.register<ClientProductionRunTask>("runVibrisAutomationClient") {
+    description = "Runs the exact patched Iris JAR in an isolated Vibris automation game directory."
     group = "verification"
 
-    val patchedJar = providers.gradleProperty("phase4PatchedJar")
-    val gameDirectory = providers.gradleProperty("phase4GameDir")
-    val runId = providers.gradleProperty("phase4RunId")
-    val scenario = providers.gradleProperty("phase4Scenario")
-    val eventFile = providers.gradleProperty("phase4EventFile")
-    val receiptFile = providers.gradleProperty("phase4ReceiptFile")
-    val commandFile = providers.gradleProperty("phase4CommandFile")
-
+    val patchedJar = providers.gradleProperty("automationPatchedJar")
+    val gameDirectory = providers.gradleProperty("automationGameDir")
+    val runId = providers.gradleProperty("automationRunId")
+    val scenario = providers.gradleProperty("automationScenario")
     doFirst {
         val game = file(gameDirectory.get())
         val pending = game.resolve("vibris/pending")
@@ -254,21 +250,14 @@ tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
     javaLauncher.set(javaToolchains.launcherFor {
         languageVersion.set(JavaLanguageVersion.of(21))
     })
-    jvmArgs.set(runId.zip(gameDirectory) { id, game ->
-        listOf(
-            "-Dvibris.phase4.runId=$id",
-            "-Dvibris.phase4.gameDir=${file(game).absolutePath}",
-            "-Dvibris.phase4.scenario=${scenario.get()}",
-            "-Dvibris.phase4.eventFile=${file(eventFile.get()).absolutePath}",
-            "-Dvibris.phase4.receiptFile=${file(receiptFile.get()).absolutePath}",
-            "-Dvibris.phase4.commandFile=${file(commandFile.get()).absolutePath}"
-        ) + if (scenario.get() == "g008-c003") {
+    jvmArgs.set(runId.zip(scenario) { id, selectedScenario ->
+        listOf("-Dvibris.automation.runId=$id") + if (selectedScenario == "g008-c003") {
             listOf("-Dio.grpc.netty.shaded.io.netty.allocator.type=unpooled")
         } else {
             emptyList()
         }
     })
     programArgs.set(gameDirectory.map { game ->
-        listOf("--gameDir", file(game).absolutePath, "--quickPlaySingleplayer", "vibris-phase4-world")
+        listOf("--gameDir", file(game).absolutePath, "--quickPlaySingleplayer", "vibris-automation-world")
     })
 }

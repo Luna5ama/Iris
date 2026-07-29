@@ -5,7 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.SceneContext;
-import dev.vibris.core.PackagedClientProbe;
+import dev.vibris.core.PackagedClientAutomation;
 import net.irisshaders.iris.Iris;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.storage.LevelResource;
@@ -14,15 +14,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class IrisVibrisPhase4Probe {
+public final class IrisVibrisAutomation {
 	private static final Gson GSON = new Gson();
 	private static volatile State state;
 
-	private IrisVibrisPhase4Probe() {
+	private IrisVibrisAutomation() {
 	}
 
 	public static void initialize(Path actualGameDirectory) throws IOException {
-		PackagedClientProbe probe = PackagedClientProbe.start(
+		PackagedClientAutomation probe = PackagedClientAutomation.start(
 			actualGameDirectory,
 			() -> Minecraft.getInstance().stop(),
 			(message, exception) -> Iris.logger.error(message, exception));
@@ -229,13 +229,13 @@ public final class IrisVibrisPhase4Probe {
 	}
 
 	private static final class State {
-		final PackagedClientProbe probe;
+		final PackagedClientAutomation probe;
 		volatile String activeSource;
 		volatile String failedSource;
 		volatile Path failedLink;
 		volatile String pipelineId = "";
 
-		State(PackagedClientProbe probe) {
+		State(PackagedClientAutomation probe) {
 			this.probe = probe;
 		}
 	}

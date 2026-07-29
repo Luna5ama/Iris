@@ -40,8 +40,10 @@ public class PipelineManager {
 		return pipeline;
 	}
 
-	public void replacePipeline(NamespacedId currentDimension, WorldRenderingPipeline replacement) {
-		destroyPipeline();
+	public void installPipeline(NamespacedId currentDimension, WorldRenderingPipeline replacement) {
+		if (pipeline != null || !pipelinesPerDimension.isEmpty()) {
+			throw new IllegalStateException("The previous pipeline must be destroyed before installing a replacement");
+		}
 		SystemTimeUniforms.COUNTER.reset();
 		SystemTimeUniforms.TIMER.reset();
 		pipeline = replacement;

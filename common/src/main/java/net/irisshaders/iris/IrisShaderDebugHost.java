@@ -75,7 +75,7 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 	@Override
 	public TextureCatalog textureCatalog() {
 		IrisRenderingPipeline pipeline = pipeline();
-		RenderTargets targets = pipeline.getRenderTargets();
+		RenderTargets targets = pipeline.getRenderTargetsForDebug();
 		List<TextureInfo> colortex = new ArrayList<>();
 		for (int index = 0; index < targets.getRenderTargetCount(); index++) {
 			RenderTarget target = targets.get(index);
@@ -102,7 +102,7 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 		if (name.startsWith("colortex")) {
 			try {
 				int index = Integer.parseInt(name.substring("colortex".length()));
-				RenderTargets targets = pipeline.getRenderTargets();
+				RenderTargets targets = pipeline.getRenderTargetsForDebug();
 				if (index >= 0 && index < targets.getRenderTargetCount()) {
 					RenderTarget target = targets.get(index);
 					return target == null ? null : target.getMainTexture();

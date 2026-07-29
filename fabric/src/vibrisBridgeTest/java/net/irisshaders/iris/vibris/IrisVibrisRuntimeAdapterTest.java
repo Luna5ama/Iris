@@ -42,7 +42,7 @@ class IrisVibrisRuntimeAdapterTest {
 			"village-rooftop",
 			70.0,
 			new SceneContext.Resolution(1280, 720),
-			"phase4"
+			"automation"
 		);
 
 		var context = adapter.ensureWorldAndContext(expected, CancellationToken.none()).toCompletableFuture();

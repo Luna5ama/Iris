@@ -16,12 +16,12 @@ public final class IrisVibrisLifecycle {
 	private IrisVibrisLifecycle() {
 	}
 
-	public static void initializeProbe() {
+	public static void initializeAutomation() {
 		try {
 			Path gameDirectory = IrisPlatformHelpers.getInstance().getGameDir().toAbsolutePath().normalize();
-			IrisVibrisPhase4Probe.initialize(gameDirectory);
+			IrisVibrisAutomation.initialize(gameDirectory);
 		} catch (Exception exception) {
-			Iris.logger.error("Failed to initialize the Vibris Phase 4 probe.", exception);
+			Iris.logger.error("Failed to initialize Vibris automation.", exception);
 		}
 	}
 
@@ -34,19 +34,19 @@ public final class IrisVibrisLifecycle {
 				Path gameDirectory = IrisPlatformHelpers.getInstance().getGameDir().toAbsolutePath().normalize();
 				adapter = new ThreadBoundVibrisRuntimeAdapter(
 					new MinecraftVibrisRuntimeHost(gameDirectory), candidateFrames,
-					IrisVibrisPhase4Probe::frameWaitComplete);
+					IrisVibrisAutomation::frameWaitComplete);
 				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
 				frames = candidateFrames;
 				if (bootstrap.ready()) {
 					Iris.logger.info("Vibris control service listening on 127.0.0.1:{}", bootstrap.port());
-					IrisVibrisPhase4Probe.serverReady(bootstrap.port(), bootstrap.pendingShadersRoot());
+					IrisVibrisAutomation.serverReady(bootstrap.port(), bootstrap.pendingShadersRoot());
 				} else {
 					Iris.logger.warn("Vibris control service is listening but not ready; inspect GetStatus errors.");
 				}
 			} catch (Exception exception) {
 				if (adapter != null) adapter.close();
 				else candidateFrames.close();
-				IrisVibrisPhase4Probe.shutdownComplete();
+				IrisVibrisAutomation.shutdownComplete();
 				Iris.logger.error("Vibris startup failed; the control service will remain unavailable.", exception);
 			}
 		}
@@ -56,13 +56,13 @@ public final class IrisVibrisLifecycle {
 		RenderedFrameClock current = frames;
 		if (current != null) {
 			current.renderedFrame();
-			IrisVibrisPhase4Probe.frameTail(current.currentFrame());
+			IrisVibrisAutomation.frameTail(current.currentFrame());
 		}
 	}
 
 	public static void clientFrameTail(boolean renderedWorldFrame) {
 		if (renderedWorldFrame) renderedFrame();
-		IrisVibrisPhase4Probe.clientFrameTail();
+		IrisVibrisAutomation.clientFrameTail();
 	}
 
 	static long currentFrame() {
@@ -81,7 +81,7 @@ public final class IrisVibrisLifecycle {
 			} catch (Exception exception) {
 				Iris.logger.error("Vibris shutdown did not complete cleanly.", exception);
 			} finally {
-				IrisVibrisPhase4Probe.shutdownComplete();
+				IrisVibrisAutomation.shutdownComplete();
 			}
 		}
 	}

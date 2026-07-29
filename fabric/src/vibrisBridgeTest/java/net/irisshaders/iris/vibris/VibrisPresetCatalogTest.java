@@ -56,7 +56,7 @@ class VibrisPresetCatalogTest {
 			camera,
 			70.0,
 			new SceneContext.Resolution(1280, 720),
-			"phase4");
+			"automation");
 	}
 
 	private Path writePresets() throws IOException {
@@ -67,7 +67,7 @@ class VibrisPresetCatalogTest {
 			  "time_presets": [
 			    {"id":"sunset","tick":12000,"weather":"clear"}
 			  ],
-			  "settings_presets": [{"id":"phase4"}],
+			  "settings_presets": [{"id":"automation"}],
 			  "worlds": [{
 			    "id":"shader-test-world",
 			    "save_name":"shader-test-world",
