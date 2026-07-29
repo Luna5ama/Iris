@@ -1,5 +1,6 @@
 package net.irisshaders.iris.vibris;
 
+import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.SceneContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

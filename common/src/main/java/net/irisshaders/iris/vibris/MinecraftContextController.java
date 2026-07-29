@@ -1,11 +1,13 @@
 package net.irisshaders.iris.vibris;
 
+import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.SceneContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -73,7 +75,7 @@ final class MinecraftContextController {
 					result.complete(ContextApplyResult.failure(context, failureMessage(failure)));
 					return;
 				}
-				applyClientOptions(context);
+				applyClientOptions(context, resolved);
 				pollForContext(context, resolved, cancellation, System.nanoTime() + TIMEOUT_NANOS, result);
 			}));
 		return result;
@@ -100,6 +102,7 @@ final class MinecraftContextController {
 					level, camera.x(), camera.y(), camera.z(), Set.of(), camera.yaw(), camera.pitch(), true)) {
 					throw new IllegalStateException("Player teleport was rejected");
 				}
+				player.connection.send(new ClientboundSetTimePacket(level.getGameTime(), level.getDayTime(), false));
 				player.getAbilities().flying = true;
 				player.onUpdateAbilities();
 				player.setDeltaMovement(0.0, 0.0, 0.0);
@@ -181,7 +184,18 @@ final class MinecraftContextController {
 		return null;
 	}
 
-	private void applyClientOptions(SceneContext context) {
+	private void applyClientOptions(SceneContext context, VibrisPresetCatalog.ResolvedContext resolved) {
+		if (minecraft.level != null) {
+			minecraft.level.setTimeFromServer(minecraft.level.getGameTime(), resolved.tick(), false);
+			minecraft.level.setRainLevel(resolved.weather().equals("clear") ? 0.0f : 1.0f);
+			minecraft.level.setThunderLevel(resolved.weather().equals("thunder") ? 1.0f : 0.0f);
+		}
+		if (minecraft.player != null) {
+			var camera = resolved.camera();
+			minecraft.player.setPos(camera.x(), camera.y(), camera.z());
+			minecraft.player.setYRot(camera.yaw());
+			minecraft.player.setXRot(camera.pitch());
+		}
 		minecraft.options.fov().set((int) Math.round(context.fov()));
 		if (context.resolution().isSpecified()) {
 			minecraft.getWindow().setWindowed(context.resolution().width(), context.resolution().height());

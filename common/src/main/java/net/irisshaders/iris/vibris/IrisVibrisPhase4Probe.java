@@ -3,43 +3,30 @@ package net.irisshaders.iris.vibris;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.SceneContext;
+import dev.vibris.core.PackagedClientProbe;
 import net.irisshaders.iris.Iris;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.level.storage.LevelResource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.time.Instant;
-import java.util.UUID;
 
 public final class IrisVibrisPhase4Probe {
 	private static final Gson GSON = new Gson();
-	private static final Object LOCK = new Object();
 	private static volatile State state;
 
 	private IrisVibrisPhase4Probe() {
 	}
 
 	public static void initialize(Path actualGameDirectory) throws IOException {
-		String runId = System.getProperty("vibris.phase4.runId");
-		if (runId == null) return;
-		UUID parsed = UUID.fromString(runId);
-		if (!parsed.toString().equals(runId)) throw new IOException("Phase 4 run ID is not canonical");
-		Path gameDirectory = actualGameDirectory.toAbsolutePath().normalize();
-		Path expected = propertyPath("vibris.phase4.gameDir");
-		if (!gameDirectory.equals(expected)) throw new IOException("Phase 4 game directory does not match");
-		Path eventFile = ownedFile("vibris.phase4.eventFile", gameDirectory);
-		Path receiptFile = ownedFile("vibris.phase4.receiptFile", gameDirectory);
-		Path commandFile = ownedFile("vibris.phase4.commandFile", gameDirectory);
-		Files.createDirectories(gameDirectory);
-		Files.createDirectories(eventFile.getParent());
-		State candidate = new State(runId, gameDirectory, eventFile, receiptFile, commandFile);
-		writeReceipt(candidate);
-		state = candidate;
+		PackagedClientProbe probe = PackagedClientProbe.start(
+			actualGameDirectory,
+			() -> Minecraft.getInstance().stop(),
+			(message, exception) -> Iris.logger.error(message, exception));
+		if (probe != null) state = new State(probe);
 	}
 
 	public static boolean enabled() {
@@ -55,12 +42,24 @@ public final class IrisVibrisPhase4Probe {
 	}
 
 	public static void contextApplied(SceneContext context, Minecraft minecraft) {
+		State current = state;
 		JsonObject event = event("context_applied");
-		if (event == null || minecraft.level == null || minecraft.player == null) return;
+		if (current == null || event == null || minecraft.level == null || minecraft.player == null) return;
 		JsonObject actual = contextJson(context);
+		var server = minecraft.getSingleplayerServer();
+		if (server != null) {
+			Path save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName();
+			actual.addProperty("save_id", save == null ? "" : save.toString());
+		}
+		actual.addProperty("dimension_id", minecraft.level.dimension().identifier().toString());
+		actual.addProperty("fov", minecraft.options.fov().get());
 		actual.addProperty("day_time", minecraft.level.getDayTime());
 		actual.addProperty("rain_level", minecraft.level.getRainLevel(1.0f));
 		actual.addProperty("thunder_level", minecraft.level.getThunderLevel(1.0f));
+		JsonObject resolution = new JsonObject();
+		resolution.addProperty("width", minecraft.getWindow().getWidth());
+		resolution.addProperty("height", minecraft.getWindow().getHeight());
+		actual.add("resolution", resolution);
 		JsonObject camera = new JsonObject();
 		camera.addProperty("x", minecraft.player.getX());
 		camera.addProperty("y", minecraft.player.getY());
@@ -68,6 +67,7 @@ public final class IrisVibrisPhase4Probe {
 		camera.addProperty("yaw", minecraft.player.getYRot());
 		camera.addProperty("pitch", minecraft.player.getXRot());
 		actual.add("camera", camera);
+		event.addProperty("source_uuid", current.activeSource == null ? "" : current.activeSource);
 		event.add("context", actual);
 		append(event);
 	}
@@ -188,33 +188,14 @@ public final class IrisVibrisPhase4Probe {
 
 	private static void pollCommand() {
 		State current = state;
-		if (current == null || current.stopRequested || !Files.isRegularFile(current.commandFile)) return;
-		try {
-			JsonObject command = JsonParser.parseString(Files.readString(current.commandFile)).getAsJsonObject();
-			if (!current.runId.equals(command.get("run_id").getAsString())) return;
-			if (!"stop".equals(command.get("command").getAsString())) return;
-			current.stopRequested = true;
-			Files.deleteIfExists(current.commandFile);
-			Minecraft.getInstance().stop();
-		} catch (Exception exception) {
-			Iris.logger.error("Failed to process the Phase 4 probe command.", exception);
-		}
-	}
-
-	private static void writeReceipt(State current) throws IOException {
-		JsonObject receipt = new JsonObject();
-		receipt.addProperty("pid", ProcessHandle.current().pid());
-		receipt.addProperty("started_at_utc", Instant.now().toString());
-		receipt.addProperty("run_id", current.runId);
-		receipt.addProperty("game_dir", current.gameDirectory.toString());
-		Files.writeString(current.receiptFile, GSON.toJson(receipt), StandardOpenOption.CREATE_NEW);
+		if (current != null) current.probe.pollCommand();
 	}
 
 	private static JsonObject event(String type) {
 		State current = state;
 		if (current == null) return null;
 		JsonObject event = new JsonObject();
-		event.addProperty("run_id", current.runId);
+		event.addProperty("run_id", current.probe.runId());
 		event.addProperty("type", type);
 		return event;
 	}
@@ -222,28 +203,7 @@ public final class IrisVibrisPhase4Probe {
 	private static void append(JsonObject event) {
 		State current = state;
 		if (current == null) return;
-		synchronized (LOCK) {
-			try {
-				Files.writeString(current.eventFile, GSON.toJson(event) + System.lineSeparator(),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-			} catch (IOException exception) {
-				Iris.logger.error("Failed to write a Phase 4 probe event.", exception);
-			}
-		}
-	}
-
-	private static Path ownedFile(String property, Path gameDirectory) throws IOException {
-		Path path = propertyPath(property);
-		if (!path.startsWith(gameDirectory) || path.equals(gameDirectory)) {
-			throw new IOException(property + " must be a file below the Phase 4 game directory");
-		}
-		return path;
-	}
-
-	private static Path propertyPath(String name) throws IOException {
-		String value = System.getProperty(name);
-		if (value == null || value.isBlank()) throw new IOException("Missing Phase 4 property: " + name);
-		return Path.of(value).toAbsolutePath().normalize();
+		current.probe.appendJsonLine(GSON.toJson(event));
 	}
 
 	private static String sourceUuid(Path link) {
@@ -269,23 +229,14 @@ public final class IrisVibrisPhase4Probe {
 	}
 
 	private static final class State {
-		final String runId;
-		final Path gameDirectory;
-		final Path eventFile;
-		final Path receiptFile;
-		final Path commandFile;
+		final PackagedClientProbe probe;
 		volatile String activeSource;
 		volatile String failedSource;
 		volatile Path failedLink;
 		volatile String pipelineId = "";
-		volatile boolean stopRequested;
 
-		State(String runId, Path gameDirectory, Path eventFile, Path receiptFile, Path commandFile) {
-			this.runId = runId;
-			this.gameDirectory = gameDirectory;
-			this.eventFile = eventFile;
-			this.receiptFile = receiptFile;
-			this.commandFile = commandFile;
+		State(PackagedClientProbe probe) {
+			this.probe = probe;
 		}
 	}
 }

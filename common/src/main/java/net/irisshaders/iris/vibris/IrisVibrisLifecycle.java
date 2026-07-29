@@ -1,5 +1,7 @@
 package net.irisshaders.iris.vibris;
 
+import dev.vibris.core.RenderedFrameClock;
+import dev.vibris.core.ThreadBoundVibrisRuntimeAdapter;
 import dev.vibris.core.VibrisBootstrap;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
@@ -8,7 +10,7 @@ import java.nio.file.Path;
 
 public final class IrisVibrisLifecycle {
 	private static final Object LOCK = new Object();
-	private static IrisVibrisFrameClock frames;
+	private static RenderedFrameClock frames;
 	private static VibrisBootstrap bootstrap;
 
 	private IrisVibrisLifecycle() {
@@ -26,12 +28,13 @@ public final class IrisVibrisLifecycle {
 	public static void start() {
 		synchronized (LOCK) {
 			if (bootstrap != null) return;
-			IrisVibrisFrameClock candidateFrames = new IrisVibrisFrameClock();
-			IrisVibrisRuntimeAdapter adapter = null;
+			RenderedFrameClock candidateFrames = new RenderedFrameClock();
+			ThreadBoundVibrisRuntimeAdapter adapter = null;
 			try {
 				Path gameDirectory = IrisPlatformHelpers.getInstance().getGameDir().toAbsolutePath().normalize();
-				adapter = new IrisVibrisRuntimeAdapter(
-					new MinecraftVibrisRuntimeHost(gameDirectory), candidateFrames);
+				adapter = new ThreadBoundVibrisRuntimeAdapter(
+					new MinecraftVibrisRuntimeHost(gameDirectory), candidateFrames,
+					IrisVibrisPhase4Probe::frameWaitComplete);
 				VibrisBootstrap.Config config = new VibrisBootstrap.Config(
 					integerProperty("vibris.port", 50051),
 					pathProperty("vibris.pendingShadersRoot", Path.of("R:/shaders")),
@@ -51,7 +54,7 @@ public final class IrisVibrisLifecycle {
 	}
 
 	public static void renderedFrame() {
-		IrisVibrisFrameClock current = frames;
+		RenderedFrameClock current = frames;
 		if (current != null) {
 			current.renderedFrame();
 			IrisVibrisPhase4Probe.frameTail(current.currentFrame());
@@ -64,7 +67,7 @@ public final class IrisVibrisLifecycle {
 	}
 
 	static long currentFrame() {
-		IrisVibrisFrameClock current = frames;
+		RenderedFrameClock current = frames;
 		return current == null ? 0 : current.currentFrame();
 	}
 

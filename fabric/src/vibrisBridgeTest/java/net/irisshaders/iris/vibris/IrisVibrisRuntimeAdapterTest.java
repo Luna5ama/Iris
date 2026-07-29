@@ -10,6 +10,9 @@ import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
+import dev.vibris.core.RenderedFrameClock;
+import dev.vibris.core.ThreadBoundVibrisRuntimeAdapter;
+import dev.vibris.core.VibrisRuntimeHost;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
@@ -29,8 +32,8 @@ class IrisVibrisRuntimeAdapterTest {
 	@Test
 	void activateContextAndWaitRenderedFrames() {
 		ControlledHost host = new ControlledHost();
-		IrisVibrisFrameClock frames = new IrisVibrisFrameClock();
-		IrisVibrisRuntimeAdapter adapter = new IrisVibrisRuntimeAdapter(host, frames);
+		RenderedFrameClock frames = new RenderedFrameClock();
+		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(host, frames);
 		SceneContext expected = new SceneContext(
 			"shader-test-world",
 			"minecraft:overworld",
@@ -58,7 +61,7 @@ class IrisVibrisRuntimeAdapterTest {
 
 	@Test
 	void cancelledFrameWaitCompletesWithoutAnotherFrame() throws Exception {
-		IrisVibrisFrameClock frames = new IrisVibrisFrameClock();
+		RenderedFrameClock frames = new RenderedFrameClock();
 		CancellationToken.Source cancellation = CancellationToken.source();
 		var wait = frames.waitRenderedFrames(32, cancellation.token()).toCompletableFuture();
 
@@ -66,7 +69,7 @@ class IrisVibrisRuntimeAdapterTest {
 		assertThrows(CancellationException.class, () -> wait.get(1, TimeUnit.SECONDS));
 	}
 
-	private static final class ControlledHost implements IrisVibrisRuntimeHost {
+	private static final class ControlledHost implements VibrisRuntimeHost {
 		private final Queue<Runnable> clientTasks = new ArrayDeque<>();
 		private SceneContext appliedContext;
 		private boolean clientThread;

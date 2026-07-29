@@ -37,9 +37,7 @@ buildConfig {
     packageName("net.irisshaders.iris")  // forces the package. Defaults to '${project.group}'
     useJavaOutput()
 
-    // TODO hook this up
     buildConfigField("IS_SHARED_BETA", false)
-    buildConfigField("ACTIVATE_RENDERDOC", false)
     buildConfigField("BETA_TAG", "")
     buildConfigField("BETA_VERSION", 0)
 

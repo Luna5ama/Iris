@@ -121,6 +121,8 @@ dependencies {
     "vibrisBridgeTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
     "vibrisBridgeTestImplementation"("org.junit.jupiter:junit-jupiter")
     "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-api")
+    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-capture")
+    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-core")
     "vibrisBridgeTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
 
 //    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
@@ -181,20 +183,12 @@ loom {
            // vmArgs("-Dmixin.debug.export=true")
            // vmArg("-XX:+AllowEnhancedClassRedefinition")
         }
-        create("clientWithRenderdoc") {
-            client()
-            configName = "Fabric Client"
-            ideConfigGenerated(true)
-            runDir("run")
-            environmentVariable("LD_PRELOAD", "/home/ims/renderdoc/build/lib/librenderdoc.so")
-            vmArgs("-DMC_DEBUG_ENABLED=true", "-DMC_DEBUG_DUMP_TEXTURE_ATLAS=true")
-            programArgs("--renderDebugLabels")
-        }
     }
 }
 
 tasks {
     processResources {
+        dependsOn(project(":common").tasks.named("generateBuildConfig"))
         from(project.project(":common").sourceSets.main.get().resources)
         inputs.property("version", project.version)
 
@@ -242,7 +236,11 @@ tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
             "-Dvibris.phase4.commandFile=${file(commandFile.get()).absolutePath}",
             "-Dvibris.pendingShadersRoot=${file(game).resolve("vibris/pending").absolutePath}",
             "-Dvibris.artifactRoot=${file(game).resolve("vibris/artifacts").absolutePath}"
-        )
+        ) + if (scenario.get() == "g008-c003") {
+            listOf("-Dio.grpc.netty.shaded.io.netty.allocator.type=unpooled")
+        } else {
+            emptyList()
+        }
     })
     programArgs.set(gameDirectory.map { game ->
         listOf("--gameDir", file(game).absolutePath, "--quickPlaySingleplayer", "vibris-phase4-world")

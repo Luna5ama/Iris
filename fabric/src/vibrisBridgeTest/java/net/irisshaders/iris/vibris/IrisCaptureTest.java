@@ -11,6 +11,9 @@ import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
+import dev.vibris.core.RenderedFrameClock;
+import dev.vibris.core.ThreadBoundVibrisRuntimeAdapter;
+import dev.vibris.core.VibrisRuntimeHost;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -45,8 +48,8 @@ class IrisCaptureTest {
 
 	@Test
 	void screenshotTextureBufferReadable() throws Exception {
-		IrisVibrisFrameClock frames = new IrisVibrisFrameClock();
-		IrisVibrisRuntimeAdapter adapter = new IrisVibrisRuntimeAdapter(new CaptureHost(), frames);
+		RenderedFrameClock frames = new RenderedFrameClock();
+		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan plan = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
 			target(TEXTURE, "colortex0", RAW, "colortex0"),
@@ -70,8 +73,8 @@ class IrisCaptureTest {
 
 	@Test
 	void sameFrameBundleAndUnknownResource() {
-		IrisVibrisFrameClock frames = new IrisVibrisFrameClock();
-		IrisVibrisRuntimeAdapter adapter = new IrisVibrisRuntimeAdapter(new CaptureHost(), frames);
+		RenderedFrameClock frames = new RenderedFrameClock();
+		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan bundle = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
 			target(TEXTURE, "colortex0", RAW, "colortex0"),
@@ -109,7 +112,7 @@ class IrisCaptureTest {
 		}
 	}
 
-	private static final class CaptureHost implements IrisVibrisRuntimeHost {
+	private static final class CaptureHost implements VibrisRuntimeHost {
 		@Override
 		public boolean isClientThread() {
 			return true;

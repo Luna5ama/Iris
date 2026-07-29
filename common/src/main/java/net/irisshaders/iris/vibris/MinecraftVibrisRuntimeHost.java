@@ -1,5 +1,6 @@
 package net.irisshaders.iris.vibris;
 
+import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ArtifactSink;
 import dev.vibris.api.CapturePlan;
@@ -12,6 +13,7 @@ import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.ScenePreset;
 import dev.vibris.api.TemporalResetResult;
+import dev.vibris.core.VibrisRuntimeHost;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
@@ -23,7 +25,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 
-public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
+public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final Minecraft minecraft;
 	private final MinecraftContextController contexts;
 	private final VibrisPresetCatalog presets;
