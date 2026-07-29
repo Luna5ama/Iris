@@ -5,14 +5,18 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.vibris.api.ContextValidationResult;
 import dev.vibris.api.SceneContext;
+import dev.vibris.api.ScenePreset;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -58,6 +62,56 @@ final class VibrisPresetCatalog {
 			throw new IllegalArgumentException("Unknown settings preset: " + context.settingsPresetId());
 		}
 		return new ResolvedContext(world.saveName, time.tick, time.weather, camera);
+	}
+
+	List<ScenePreset> presets() {
+		List<ScenePreset> result = new ArrayList<>();
+		var worldEntries = worlds.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
+		var timeEntries = times.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
+		var settingIds = settings.stream().sorted().toList();
+		for (var worldEntry : worldEntries) {
+			WorldPreset world = worldEntry.getValue();
+			var cameras = world.cameras.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
+			for (String dimension : world.dimensions.stream().sorted().toList()) {
+				for (var camera : cameras) {
+					if (!camera.getValue().dimensionId.equals(dimension)) continue;
+					for (var time : timeEntries) {
+						for (String setting : settingIds) {
+							String id = String.join("/", worldEntry.getKey(), dimension, time.getKey(),
+								camera.getKey(), setting);
+							SceneContext context = new SceneContext(worldEntry.getKey(), dimension, time.getKey(),
+								time.getValue().weather, camera.getKey(), 70.0,
+								SceneContext.Resolution.unspecified(), setting);
+							result.add(new ScenePreset(id, id, context));
+						}
+					}
+				}
+			}
+		}
+		return List.copyOf(result);
+	}
+
+	ContextValidationResult validate(SceneContext context) {
+		try {
+			WorldPreset world = require(worlds, context.saveId(), "save");
+			if (!world.dimensions.contains(context.dimensionId())) {
+				throw new IllegalArgumentException("Unknown dimension preset: " + context.dimensionId());
+			}
+			CameraPreset camera = require(world.cameras, context.cameraPresetId(), "camera");
+			if (!camera.dimensionId.equals(context.dimensionId())) {
+				throw new IllegalArgumentException("Camera preset belongs to another dimension");
+			}
+			TimePreset time = require(times, context.timePresetId(), "time");
+			if (!context.weatherPresetId().isEmpty() && !time.weather.equals(context.weatherPresetId())) {
+				throw new IllegalArgumentException("Weather preset does not match the selected time preset");
+			}
+			if (!context.settingsPresetId().isEmpty() && !settings.contains(context.settingsPresetId())) {
+				throw new IllegalArgumentException("Unknown settings preset: " + context.settingsPresetId());
+			}
+			return ContextValidationResult.accepted();
+		} catch (IllegalArgumentException exception) {
+			return ContextValidationResult.invalid(exception.getMessage());
+		}
 	}
 
 	private static Map<String, TimePreset> parseTimes(JsonObject root) {

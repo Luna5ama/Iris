@@ -5,10 +5,12 @@ import dev.vibris.api.ArtifactSink;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
+import dev.vibris.api.ContextValidationResult;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
+import dev.vibris.api.ScenePreset;
 import dev.vibris.api.TemporalResetResult;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
@@ -18,21 +20,41 @@ import net.minecraft.client.Minecraft;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 	private final Minecraft minecraft;
 	private final MinecraftContextController contexts;
+	private final VibrisPresetCatalog presets;
 	private final MinecraftVibrisCapture capture;
 	private final Path shaderLink;
 	private volatile SceneContext activeContext;
 
 	public MinecraftVibrisRuntimeHost(Path gameDirectory) throws IOException {
 		minecraft = Minecraft.getInstance();
-		VibrisPresetCatalog presets = VibrisPresetCatalog.load(gameDirectory.resolve("config/vibris/presets.json"));
+		presets = VibrisPresetCatalog.load(gameDirectory.resolve("config/vibris/presets.json"));
 		contexts = new MinecraftContextController(minecraft, presets);
 		capture = new MinecraftVibrisCapture(minecraft);
 		shaderLink = gameDirectory.resolve("shaderpacks/vibris/shaders");
+	}
+
+	@Override
+	public List<ScenePreset> presets() {
+		SceneContext.Resolution resolution = new SceneContext.Resolution(
+			minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight());
+		return presets.presets().stream().map(preset -> {
+			SceneContext context = preset.context();
+			SceneContext resolved = new SceneContext(
+				context.saveId(), context.dimensionId(), context.timePresetId(), context.weatherPresetId(),
+				context.cameraPresetId(), context.fov(), resolution, context.settingsPresetId());
+			return new ScenePreset(preset.presetId(), preset.displayName(), resolved);
+		}).toList();
+	}
+
+	@Override
+	public ContextValidationResult validateContext(SceneContext context) {
+		return presets.validate(context);
 	}
 
 	@Override
@@ -84,6 +106,7 @@ public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 		SystemTimeUniforms.COUNTER.reset();
 		SystemTimeUniforms.TIMER.reset();
 		CapturedRenderingState.INSTANCE.resetTextureReloadCount();
+		IrisVibrisPhase4Probe.temporalReset();
 		return new TemporalResetResult(true);
 	}
 
@@ -99,7 +122,9 @@ public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 		long frameId,
 		CancellationToken cancellation
 	) {
-		return capture.capture(plan, sink, frameId, cancellation);
+		CaptureResult result = capture.capture(plan, sink, frameId, cancellation);
+		IrisVibrisPhase4Probe.captureComplete(plan, result.frameId());
+		return result;
 	}
 
 	@Override

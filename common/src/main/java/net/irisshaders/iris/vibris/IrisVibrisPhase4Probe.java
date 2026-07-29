@@ -1,8 +1,10 @@
 package net.irisshaders.iris.vibris;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.vibris.api.CapturePlan;
 import dev.vibris.api.SceneContext;
 import net.irisshaders.iris.Iris;
 import net.minecraft.client.Minecraft;
@@ -139,6 +141,26 @@ public final class IrisVibrisPhase4Probe {
 		event.addProperty("start_frame", startFrame);
 		event.addProperty("end_frame", endFrame);
 		event.addProperty("count", endFrame - startFrame);
+		append(event);
+	}
+
+	public static void temporalReset() {
+		State current = state;
+		JsonObject event = event("temporal_reset");
+		if (current == null || event == null) return;
+		event.addProperty("source_uuid", current.activeSource == null ? "" : current.activeSource);
+		append(event);
+	}
+
+	public static void captureComplete(CapturePlan plan, long frameId) {
+		State current = state;
+		JsonObject event = event("capture_complete");
+		if (current == null || event == null) return;
+		event.addProperty("source_uuid", current.activeSource == null ? "" : current.activeSource);
+		event.addProperty("frame_id", frameId);
+		JsonArray targets = new JsonArray();
+		plan.targets().forEach(target -> targets.add(target.artifactName()));
+		event.add("targets", targets);
 		append(event);
 	}
 

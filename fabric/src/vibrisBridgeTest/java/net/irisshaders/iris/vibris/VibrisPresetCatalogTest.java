@@ -10,6 +10,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VibrisPresetCatalogTest {
 	@TempDir
@@ -25,6 +26,12 @@ class VibrisPresetCatalogTest {
 		assertEquals(12000, resolved.tick());
 		assertEquals(124.5, resolved.camera().x());
 		assertEquals(137.0f, resolved.camera().yaw());
+		assertEquals(1, catalog.presets().size());
+		assertTrue(catalog.validate(catalog.presets().getFirst().context()).valid());
+		SceneContext configureContext = new SceneContext(
+			"shader-test-world", "minecraft:overworld", "sunset", "", "village-rooftop", 70.0,
+			SceneContext.Resolution.unspecified(), "");
+		assertTrue(catalog.validate(configureContext).valid());
 	}
 
 	@Test

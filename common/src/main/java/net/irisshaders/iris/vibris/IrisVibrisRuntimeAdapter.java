@@ -5,14 +5,17 @@ import dev.vibris.api.CancellationToken;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
+import dev.vibris.api.ContextValidationResult;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
+import dev.vibris.api.ScenePreset;
 import dev.vibris.api.TemporalResetResult;
 import dev.vibris.api.VibrisRuntimeAdapter;
 
 import java.util.Objects;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,6 +43,16 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 			}
 			return status;
 		}, CancellationToken.none());
+	}
+
+	@Override
+	public CompletionStage<List<ScenePreset>> listPresets() {
+		return onClient(host::presets, CancellationToken.none());
+	}
+
+	@Override
+	public CompletionStage<ContextValidationResult> validateContext(SceneContext context) {
+		return onClient(() -> host.validateContext(context), CancellationToken.none());
 	}
 
 	@Override
