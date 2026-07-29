@@ -16,6 +16,7 @@ import net.irisshaders.iris.shadows.ShadowRenderer;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.irisshaders.iris.vertices.ImmediateState;
+import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
 import net.minecraft.util.Util;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -58,6 +59,7 @@ public class MixinGameRenderer {
 	@Inject(method = "render", at = @At("TAIL"))
 	private void iris$finishFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
 		Iris.getShaderDebugControl().tickScreenshot();
+		IrisVibrisLifecycle.clientFrameTail(this.minecraft.level != null);
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))

@@ -1,3 +1,6 @@
+import net.fabricmc.loom.task.prod.ClientProductionRunTask
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
 plugins {
     id("java")
     id("idea")
@@ -32,6 +35,28 @@ base {
     archivesName.set("iris-fabric")
 }
 
+val vibrisBridgeTest = sourceSets.create("vibrisBridgeTest") {
+    java.srcDir("src/vibrisBridgeTest/java")
+    compileClasspath += sourceSets.main.get().output
+    compileClasspath += project(":common").sourceSets.main.get().output
+    runtimeClasspath += output + compileClasspath + sourceSets.main.get().runtimeClasspath
+}
+
+configurations[vibrisBridgeTest.implementationConfigurationName]
+    .extendsFrom(configurations.implementation.get(), configurations.testImplementation.get())
+configurations[vibrisBridgeTest.runtimeOnlyConfigurationName]
+    .extendsFrom(configurations.runtimeOnly.get(), configurations.testRuntimeOnly.get())
+
+val vibrisRuntimeInclude = configurations.create("vibrisRuntimeInclude") {
+    isCanBeConsumed = false
+    isCanBeResolved = false
+    isTransitive = true
+}
+
+configurations.named("includeInternal") {
+    extendsFrom(vibrisRuntimeInclude)
+}
+
 dependencies {
     minecraft("com.mojang:minecraft:${MINECRAFT_VERSION}")
     mappings(loom.layered {
@@ -45,6 +70,7 @@ dependencies {
     fun addRuntimeFabricModule(name: String) {
         val module = fabricApi.module(name, FABRIC_API_VERSION)
         modRuntimeOnly(module)
+        add("productionRuntimeMods", module)
     }
 
     fun addEmbeddedFabricModule(name: String) {
@@ -89,7 +115,13 @@ dependencies {
     implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
     implementAndIncludeTransitive("dev.luna5ama:vibris-common")
     implementAndIncludeTransitive("dev.luna5ama:vibris-capture")
-    implementAndIncludeTransitive("dev.luna5ama:vibris-mcp")
+    modImplementation("dev.luna5ama:vibris-core")
+    vibrisRuntimeInclude("dev.luna5ama:vibris-core")
+
+    "vibrisBridgeTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
+    "vibrisBridgeTestImplementation"("org.junit.jupiter:junit-jupiter")
+    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-api")
+    "vibrisBridgeTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
 
 //    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
 //    implementAndIncludeTransitive("commons-codec:commons-codec:1.19.0")
@@ -121,6 +153,13 @@ tasks.named("compileTestJava").configure {
 
 tasks.named("test").configure {
     enabled = false
+}
+
+tasks.register<Test>("vibrisBridgeTest") {
+    description = "Runs the focused Iris-Vibris runtime bridge tests."
+    testClassesDirs = vibrisBridgeTest.output.classesDirs
+    classpath = vibrisBridgeTest.runtimeClasspath
+    useJUnitPlatform()
 }
 
 loom {
@@ -173,4 +212,39 @@ tasks {
     }
 
     remapJar.get().destinationDirectory = rootDir.resolve("build").resolve("libs")
+}
+
+tasks.register<ClientProductionRunTask>("runVibrisPhase4Client") {
+    description = "Runs the exact patched Iris JAR in an isolated Phase 4 game directory."
+    group = "verification"
+
+    val patchedJar = providers.gradleProperty("phase4PatchedJar")
+    val gameDirectory = providers.gradleProperty("phase4GameDir")
+    val runId = providers.gradleProperty("phase4RunId")
+    val scenario = providers.gradleProperty("phase4Scenario")
+    val eventFile = providers.gradleProperty("phase4EventFile")
+    val receiptFile = providers.gradleProperty("phase4ReceiptFile")
+    val commandFile = providers.gradleProperty("phase4CommandFile")
+
+    mods.from(patchedJar.map { file(it) })
+    mods.from(SODIUM_DEPENDENCY_FABRIC)
+    runDir.set(layout.dir(gameDirectory.map { file(it) }))
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    })
+    jvmArgs.set(runId.zip(gameDirectory) { id, game ->
+        listOf(
+            "-Dvibris.phase4.runId=$id",
+            "-Dvibris.phase4.gameDir=${file(game).absolutePath}",
+            "-Dvibris.phase4.scenario=${scenario.get()}",
+            "-Dvibris.phase4.eventFile=${file(eventFile.get()).absolutePath}",
+            "-Dvibris.phase4.receiptFile=${file(receiptFile.get()).absolutePath}",
+            "-Dvibris.phase4.commandFile=${file(commandFile.get()).absolutePath}",
+            "-Dvibris.pendingShadersRoot=${file(game).resolve("vibris/pending").absolutePath}",
+            "-Dvibris.artifactRoot=${file(game).resolve("vibris/artifacts").absolutePath}"
+        )
+    })
+    programArgs.set(gameDirectory.map { game ->
+        listOf("--gameDir", file(game).absolutePath, "--quickPlaySingleplayer", "vibris-phase4-world")
+    })
 }

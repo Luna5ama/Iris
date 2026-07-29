@@ -7,9 +7,9 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import dev.luna5ama.vibris.capture.CaptureControlServer;
 import dev.luna5ama.vibris.capture.CaptureManager;
 import dev.luna5ama.vibris.capture.ShaderDebugControl;
+import dev.vibris.api.ReloadResult;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
@@ -43,6 +43,7 @@ import net.irisshaders.iris.vertices.sodium.EntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.GlyphExtVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.IrisEntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.ModelToEntityVertexSerializer;
+import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
 import net.minecraft.ChatFormatting;
 import net.minecraft.SharedConstants;
 import net.minecraft.util.Util;
@@ -71,9 +72,11 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -93,15 +96,6 @@ public class Iris {
 	public static final IrisLogging logger = new IrisLogging(MODNAME);
 	private static final CaptureManager CAPTURE_MANAGER = new CaptureManager();
 	private static final ShaderDebugControl SHADER_DEBUG_CONTROL = new ShaderDebugControl(new IrisShaderDebugHost());
-	private static final CaptureControlServer CAPTURE_CONTROL_SERVER = new CaptureControlServer(
-		CAPTURE_MANAGER,
-		runnable -> Minecraft.getInstance().execute(runnable),
-		() -> {
-			reload();
-			return null;
-		},
-		SHADER_DEBUG_CONTROL
-	);
 	public static final boolean IS_FOOL;
 	private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
 	// Change this for snapshots!
@@ -174,6 +168,8 @@ public class Iris {
 		if (!IrisPlatformHelpers.getInstance().isModLoaded("distanthorizons")) {
 			loadShaderpack();
 		}
+
+		IrisVibrisLifecycle.start();
 	}
 
 	public static void duringRenderSystemInit() {
@@ -619,6 +615,55 @@ public class Iris {
 		System.out.printf("Reloaded shaders in %.2f ms%n", elapsed / 1_000_000.0);
 	}
 
+	public static ReloadResult reloadVibrisShaderpack() {
+		SHADER_DEBUG_CONTROL.clearErrors();
+		ShaderPack previousPack = currentPack;
+		String previousPackName = currentPackName;
+		boolean previousFallback = fallback;
+		FileSystem previousZipFileSystem = zipFileSystem;
+		NamespacedId dimension = Minecraft.getInstance().level == null ? DimensionId.OVERWORLD : getCurrentDimension();
+
+		boolean loaded = loadExternalShaderpack("vibris");
+		WorldRenderingPipeline replacement = null;
+		if (loaded) {
+			try {
+				replacement = new IrisRenderingPipeline(currentPack.getProgramSet(dimension));
+			} catch (Exception exception) {
+				handleException(exception);
+				logger.error("Failed to create the candidate Vibris pipeline, keeping the active pipeline.", exception);
+			}
+		}
+
+		List<ReloadResult.Diagnostic> diagnostics = SHADER_DEBUG_CONTROL.errorList().stream()
+			.map(error -> new ReloadResult.Diagnostic(
+				ReloadResult.Severity.ERROR,
+				error.getFilename(),
+				0,
+				error.getMessage()))
+			.collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+		boolean active = loaded && "vibris".equals(currentPackName) && currentPack != null && !fallback &&
+			replacement instanceof IrisRenderingPipeline;
+		if (active) {
+			getPipelineManager().replacePipeline(dimension, replacement);
+			closeShaderpackFileSystem(previousZipFileSystem);
+			zipFileSystem = null;
+			return ReloadResult.success(diagnostics);
+		}
+
+		currentPack = previousPack;
+		currentPackName = previousPackName;
+		fallback = previousFallback;
+		zipFileSystem = previousZipFileSystem;
+		if (!active && diagnostics.isEmpty()) {
+			diagnostics.add(new ReloadResult.Diagnostic(
+				ReloadResult.Severity.ERROR,
+				"shaderpack",
+				0,
+				"The fixed Vibris shaderpack did not produce an active Iris pipeline."));
+		}
+		return ReloadResult.failurePreservingActiveState(diagnostics);
+	}
+
 	/**
 	 * Destroys and deallocates all created OpenGL resources. Useful as part of a reload.
 	 */
@@ -630,14 +675,18 @@ public class Iris {
 		// Close the zip filesystem that the shaderpack was loaded from
 		//
 		// This prevents a FileSystemAlreadyExistsException when reloading shaderpacks.
-		if (zipFileSystem != null) {
-			try {
-				zipFileSystem.close();
-			} catch (NoSuchFileException e) {
-				logger.warn("Failed to close the shaderpack zip when reloading because it was deleted, proceeding anyways.");
-			} catch (IOException e) {
-				logger.error("Failed to close zip file system?", e);
-			}
+		closeShaderpackFileSystem(zipFileSystem);
+		zipFileSystem = null;
+	}
+
+	private static void closeShaderpackFileSystem(FileSystem fileSystem) {
+		if (fileSystem == null) return;
+		try {
+			fileSystem.close();
+		} catch (NoSuchFileException exception) {
+			logger.warn("Failed to close the shaderpack zip when reloading because it was deleted, proceeding anyways.");
+		} catch (IOException exception) {
+			logger.error("Failed to close zip file system?", exception);
 		}
 	}
 
@@ -821,6 +870,7 @@ public class Iris {
 	 */
 	public void onEarlyInitialize() {
 		IRIS_VERSION = IrisPlatformHelpers.getInstance().getVersion();
+		IrisVibrisLifecycle.initializeProbe();
 
 		updateChecker = new UpdateChecker(IRIS_VERSION);
 
@@ -877,11 +927,6 @@ public class Iris {
 					)
 			);
 		});
-		try {
-			CAPTURE_CONTROL_SERVER.start(Path.of("iris-capture-control.json"));
-		} catch (IOException e) {
-			throw new RuntimeException("Failed to start Iris capture control server", e);
-		}
 		initialized = true;
 	}
 }

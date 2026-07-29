@@ -32,19 +32,21 @@ public class PipelineManager {
 			Iris.logger.info("Creating pipeline for dimension {}", currentDimension);
 			pipeline = pipelineFactory.apply(currentDimension);
 			pipelinesPerDimension.put(currentDimension, pipeline);
-
-			if (WorldRenderingSettings.INSTANCE.isReloadRequired()) {
-				if (Minecraft.getInstance().levelRenderer != null) {
-					Minecraft.getInstance().levelRenderer.allChanged();
-				}
-
-				WorldRenderingSettings.INSTANCE.clearReloadRequired();
-			}
+			reloadWorldRendererIfRequired();
 		} else {
 			pipeline = pipelinesPerDimension.get(currentDimension);
 		}
 
 		return pipeline;
+	}
+
+	public void replacePipeline(NamespacedId currentDimension, WorldRenderingPipeline replacement) {
+		destroyPipeline();
+		SystemTimeUniforms.COUNTER.reset();
+		SystemTimeUniforms.TIMER.reset();
+		pipeline = replacement;
+		pipelinesPerDimension.put(currentDimension, replacement);
+		reloadWorldRendererIfRequired();
 	}
 
 	@Nullable
@@ -109,5 +111,13 @@ public class PipelineManager {
 		//
 		// This seems to be what most code expects. It's a sane default in any case.
 		GlStateManager._activeTexture(GL20C.GL_TEXTURE0);
+	}
+
+	private void reloadWorldRendererIfRequired() {
+		if (!WorldRenderingSettings.INSTANCE.isReloadRequired()) return;
+		if (Minecraft.getInstance().levelRenderer != null) {
+			Minecraft.getInstance().levelRenderer.allChanged();
+		}
+		WorldRenderingSettings.INSTANCE.clearReloadRequired();
 	}
 }
