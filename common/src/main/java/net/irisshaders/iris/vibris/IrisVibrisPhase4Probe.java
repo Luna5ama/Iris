@@ -182,8 +182,7 @@ public final class IrisVibrisPhase4Probe {
 	private static void writeReceipt(State current) throws IOException {
 		JsonObject receipt = new JsonObject();
 		receipt.addProperty("pid", ProcessHandle.current().pid());
-		receipt.addProperty("started_at_utc", ProcessHandle.current().info().startInstant()
-			.orElse(Instant.now()).toString());
+		receipt.addProperty("started_at_utc", Instant.now().toString());
 		receipt.addProperty("run_id", current.runId);
 		receipt.addProperty("game_dir", current.gameDirectory.toString());
 		Files.writeString(current.receiptFile, GSON.toJson(receipt), StandardOpenOption.CREATE_NEW);

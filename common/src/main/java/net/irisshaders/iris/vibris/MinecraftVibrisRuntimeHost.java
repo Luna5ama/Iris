@@ -1,8 +1,12 @@
 package net.irisshaders.iris.vibris;
 
 import dev.vibris.api.CancellationToken;
+import dev.vibris.api.ArtifactSink;
+import dev.vibris.api.CapturePlan;
+import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.ReloadResult;
+import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
@@ -19,6 +23,7 @@ import java.util.concurrent.CompletionStage;
 public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 	private final Minecraft minecraft;
 	private final MinecraftContextController contexts;
+	private final MinecraftVibrisCapture capture;
 	private final Path shaderLink;
 	private volatile SceneContext activeContext;
 
@@ -26,6 +31,7 @@ public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 		minecraft = Minecraft.getInstance();
 		VibrisPresetCatalog presets = VibrisPresetCatalog.load(gameDirectory.resolve("config/vibris/presets.json"));
 		contexts = new MinecraftContextController(minecraft, presets);
+		capture = new MinecraftVibrisCapture(minecraft);
 		shaderLink = gameDirectory.resolve("shaderpacks/vibris/shaders");
 	}
 
@@ -79,6 +85,21 @@ public final class MinecraftVibrisRuntimeHost implements IrisVibrisRuntimeHost {
 		SystemTimeUniforms.TIMER.reset();
 		CapturedRenderingState.INSTANCE.resetTextureReloadCount();
 		return new TemporalResetResult(true);
+	}
+
+	@Override
+	public ResourceCatalog resourceCatalog(long frameId) {
+		return capture.resourceCatalog(frameId);
+	}
+
+	@Override
+	public CaptureResult capture(
+		CapturePlan plan,
+		ArtifactSink sink,
+		long frameId,
+		CancellationToken cancellation
+	) {
+		return capture.capture(plan, sink, frameId, cancellation);
 	}
 
 	@Override

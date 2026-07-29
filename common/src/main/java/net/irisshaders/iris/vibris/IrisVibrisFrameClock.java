@@ -8,9 +8,11 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongFunction;
 
 public final class IrisVibrisFrameClock implements AutoCloseable {
 	private final List<Waiter> waiters = new ArrayList<>();
+	private final List<CaptureTask<?>> captures = new ArrayList<>();
 	private long renderedFrames;
 	private boolean closed;
 
@@ -26,10 +28,32 @@ public final class IrisVibrisFrameClock implements AutoCloseable {
 		return result;
 	}
 
-	public synchronized void renderedFrame() {
-		if (closed) return;
-		renderedFrames++;
-		waiters.removeIf(waiter -> complete(waiter));
+	public <T> CompletionStage<T> captureAtNextFrame(
+		CancellationToken cancellation,
+		LongFunction<T> action
+	) {
+		synchronized (this) {
+			if (closed || cancellation.isCancellationRequested()) return cancelled();
+			CompletableFuture<T> result = new CompletableFuture<>();
+			CaptureTask<T> capture = new CaptureTask<>(cancellation, action, result);
+			captures.add(capture);
+			pollCaptureCancellation(capture);
+			return result;
+		}
+	}
+
+	public void renderedFrame() {
+		List<CaptureTask<?>> current;
+		long frameId;
+		synchronized (this) {
+			if (closed) return;
+			renderedFrames++;
+			frameId = renderedFrames;
+			waiters.removeIf(waiter -> complete(waiter));
+			current = List.copyOf(captures);
+			captures.clear();
+		}
+		current.forEach(capture -> capture.run(frameId));
 	}
 
 	public synchronized long currentFrame() {
@@ -43,6 +67,9 @@ public final class IrisVibrisFrameClock implements AutoCloseable {
 		waiters.forEach(waiter -> waiter.result.completeExceptionally(
 			new CancellationException("Vibris frame clock closed")));
 		waiters.clear();
+		captures.forEach(capture -> capture.result.completeExceptionally(
+			new CancellationException("Vibris frame clock closed")));
+		captures.clear();
 	}
 
 	private boolean complete(Waiter waiter) {
@@ -70,10 +97,40 @@ public final class IrisVibrisFrameClock implements AutoCloseable {
 		});
 	}
 
-	private static CompletionStage<Long> cancelled() {
+	private void pollCaptureCancellation(CaptureTask<?> capture) {
+		CompletableFuture.delayedExecutor(10, TimeUnit.MILLISECONDS).execute(() -> {
+			synchronized (this) {
+				if (capture.result.isDone() || closed || !captures.contains(capture)) return;
+				if (capture.cancellation.isCancellationRequested()) {
+					captures.remove(capture);
+					capture.result.completeExceptionally(
+						new CancellationException("Vibris capture cancelled"));
+					return;
+				}
+			}
+			pollCaptureCancellation(capture);
+		});
+	}
+
+	private static <T> CompletionStage<T> cancelled() {
 		return CompletableFuture.failedFuture(new CancellationException("Vibris frame wait cancelled"));
 	}
 
 	private record Waiter(long target, CancellationToken cancellation, CompletableFuture<Long> result) {
+	}
+
+	private record CaptureTask<T>(
+		CancellationToken cancellation,
+		LongFunction<T> action,
+		CompletableFuture<T> result
+	) {
+		void run(long frameId) {
+			try {
+				cancellation.throwIfCancellationRequested();
+				result.complete(action.apply(frameId));
+			} catch (Throwable throwable) {
+				result.completeExceptionally(throwable);
+			}
+		}
 	}
 }

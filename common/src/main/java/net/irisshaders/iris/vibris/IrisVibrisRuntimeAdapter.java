@@ -22,6 +22,7 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 	private final IrisVibrisRuntimeHost host;
 	private final IrisVibrisFrameClock frames;
 	private final AtomicBoolean closed = new AtomicBoolean();
+	private volatile ResourceCatalog catalog = ResourceCatalog.empty();
 
 	public IrisVibrisRuntimeAdapter(IrisVibrisRuntimeHost host, IrisVibrisFrameClock frames) {
 		this.host = Objects.requireNonNull(host, "host");
@@ -30,7 +31,15 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 
 	@Override
 	public CompletionStage<RuntimeStatus> getStatus() {
-		return onClient(host::status, CancellationToken.none());
+		return onClient(() -> {
+			RuntimeStatus status = host.status();
+			try {
+				catalog = host.resourceCatalog(frames.currentFrame());
+			} catch (IllegalStateException ignored) {
+				catalog = ResourceCatalog.empty();
+			}
+			return status;
+		}, CancellationToken.none());
 	}
 
 	@Override
@@ -43,7 +52,11 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 
 	@Override
 	public CompletionStage<ReloadResult> reloadVibrisShaderpack(CancellationToken cancellation) {
-		return onClient(() -> host.reload(cancellation), cancellation);
+		return onClient(() -> {
+			ReloadResult result = host.reload(cancellation);
+			if (result.successful()) catalog = host.resourceCatalog(frames.currentFrame());
+			return result;
+		}, cancellation);
 	}
 
 	@Override
@@ -63,7 +76,7 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 
 	@Override
 	public ResourceCatalog getResourceCatalog() {
-		return ResourceCatalog.empty();
+		return catalog;
 	}
 
 	@Override
@@ -72,7 +85,12 @@ public final class IrisVibrisRuntimeAdapter implements VibrisRuntimeAdapter {
 		ArtifactSink sink,
 		CancellationToken cancellation
 	) {
-		return CompletableFuture.failedFuture(new UnsupportedOperationException("Capture is not available yet"));
+		if (closed.get()) return CompletableFuture.failedFuture(new IllegalStateException("Vibris runtime is closed"));
+		return frames.captureAtNextFrame(cancellation, frameId -> {
+			CaptureResult result = host.capture(plan, sink, frameId, cancellation);
+			catalog = host.resourceCatalog(frameId);
+			return result;
+		});
 	}
 
 	@Override

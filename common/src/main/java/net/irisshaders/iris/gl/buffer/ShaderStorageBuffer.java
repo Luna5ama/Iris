@@ -38,6 +38,10 @@ public class ShaderStorageBuffer {
 		return info.size();
 	}
 
+	public final String getName() {
+		return info.name();
+	}
+
 	protected void destroy() {
 		IrisRenderSystem.bindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, index, 0);
 		// DO NOT use the GlStateManager version here! On Linux, it will attempt to clear the data using BufferData and cause GL errors.

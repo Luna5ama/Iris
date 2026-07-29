@@ -198,7 +198,8 @@ public class ShaderPack {
 			ShaderStorageInfo info = shaderStorageInfoEntry.getValue();
 
 			if (info.name() == null) {
-				bufferObjects.put(shaderStorageInfoEntry.getIntKey(), new BuiltShaderStorageInfo(info.size(), info.relative(), info.scaleX(), info.scaleY(), null));
+				bufferObjects.put(shaderStorageInfoEntry.getIntKey(), new BuiltShaderStorageInfo(
+					info.size(), info.relative(), info.scaleX(), info.scaleY(), null, info.name()));
 			} else {
 				String path = info.name();
 
@@ -215,7 +216,8 @@ public class ShaderPack {
 						throw new IllegalStateException("Tried to load a shader storage file with no space in the buffer! Increase the buffer size.");
 					}
 
-					bufferObjects.put(shaderStorageInfoEntry.getIntKey(), new BuiltShaderStorageInfo(info.size(), info.relative(), info.scaleX(), info.scaleY(), data));
+					bufferObjects.put(shaderStorageInfoEntry.getIntKey(), new BuiltShaderStorageInfo(
+						info.size(), info.relative(), info.scaleX(), info.scaleY(), data, info.name()));
 				} catch (IOException e) {
 					Iris.logger.error("Shader storage buffer with index " + shaderStorageInfoEntry.getIntKey() + " and path " + path + " could not be read.", e);
 				}

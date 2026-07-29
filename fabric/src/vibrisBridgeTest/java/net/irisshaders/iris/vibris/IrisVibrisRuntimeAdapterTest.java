@@ -1,8 +1,12 @@
 package net.irisshaders.iris.vibris;
 
 import dev.vibris.api.CancellationToken;
+import dev.vibris.api.ArtifactSink;
+import dev.vibris.api.CapturePlan;
+import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.ReloadResult;
+import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
@@ -10,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
@@ -103,6 +108,23 @@ class IrisVibrisRuntimeAdapterTest {
 		public TemporalResetResult resetTemporal(CancellationToken cancellation) {
 			requireClientThread();
 			return new TemporalResetResult(true);
+		}
+
+		@Override
+		public ResourceCatalog resourceCatalog(long frameId) {
+			requireClientThread();
+			return ResourceCatalog.empty();
+		}
+
+		@Override
+		public CaptureResult capture(
+			CapturePlan plan,
+			ArtifactSink sink,
+			long frameId,
+			CancellationToken cancellation
+		) {
+			requireClientThread();
+			return new CaptureResult(frameId, Map.of());
 		}
 
 		@Override
