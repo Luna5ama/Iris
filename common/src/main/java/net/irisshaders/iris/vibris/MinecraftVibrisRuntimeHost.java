@@ -114,7 +114,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
-	public String debugControl(DebugControlCommand command) {
+	public CompletionStage<String> debugControl(DebugControlCommand command) {
 		if (command instanceof DebugControlCommand.ReloadShader reload && reload.getConfig() != null) {
 			writeShaderConfig(reload.getConfig());
 		}

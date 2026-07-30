@@ -58,7 +58,7 @@ public class MixinGameRenderer {
 
 	@Inject(method = "render", at = @At("TAIL"))
 	private void iris$finishFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
-		Iris.getShaderDebugControl().tickScreenshot();
+		Iris.getShaderDebugControl().tickFrame();
 		IrisVibrisLifecycle.clientFrameTail(this.minecraft.level != null);
 	}
 
