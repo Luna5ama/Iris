@@ -183,7 +183,6 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	private final CloudSetting dhCloudSetting;
 	private final SodiumPrograms sodiumPrograms;
 	public boolean isBeforeTranslucent;
-	private boolean initializedBlockIds;
 	private ShaderStorageBufferHolder shaderStorageBufferHolder;
 	private ShadowRenderTargets shadowRenderTargets;
 	private WorldRenderingPhase overridePhase = null;
@@ -435,8 +434,10 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 			}
 		}, loadedShaders::add);
 
-		initializedBlockIds = false;
-
+		WorldRenderingSettings.INSTANCE.setBlockStateIds(
+			BlockMaterialMapping.createBlockStateIdMap(pack.getIdMap().getBlockProperties(), pack.getIdMap().getTagEntries()));
+		WorldRenderingSettings.INSTANCE.setBlockTypeIds(
+			BlockMaterialMapping.createBlockTypeMap(pack.getIdMap().getBlockRenderTypeMap()));
 		WorldRenderingSettings.INSTANCE.setEntityIds(programSet.getPack().getIdMap().getEntityIdMap());
 		WorldRenderingSettings.INSTANCE.setItemIds(programSet.getPack().getIdMap().getItemIdMap());
 		WorldRenderingSettings.INSTANCE.setAmbientOcclusionLevel(programSet.getPackDirectives().getAmbientOcclusionLevel());
@@ -881,14 +882,6 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	public void beginLevelRendering() {
 		isRenderingWorld = true;
 		IrisRenderSystem.startCapture();
-
-		if (!initializedBlockIds) {
-			WorldRenderingSettings.INSTANCE.setBlockStateIds(
-				BlockMaterialMapping.createBlockStateIdMap(pack.getIdMap().getBlockProperties(), pack.getIdMap().getTagEntries()));
-			WorldRenderingSettings.INSTANCE.setBlockTypeIds(BlockMaterialMapping.createBlockTypeMap(pack.getIdMap().getBlockRenderTypeMap()));
-			Minecraft.getInstance().levelRenderer.allChanged();
-			initializedBlockIds = true;
-		}
 
 		// Make sure we're using texture unit 0 for this.
 		GlStateManager._activeTexture(GL15C.GL_TEXTURE0);
