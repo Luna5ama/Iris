@@ -12,6 +12,7 @@ public final class IrisVibrisLifecycle {
 	private static final Object LOCK = new Object();
 	private static RenderedFrameClock frames;
 	private static VibrisBootstrap bootstrap;
+	private static volatile MinecraftVibrisRuntimeHost host;
 
 	private IrisVibrisLifecycle() {
 	}
@@ -32,11 +33,13 @@ public final class IrisVibrisLifecycle {
 			ThreadBoundVibrisRuntimeAdapter adapter = null;
 			try {
 				Path gameDirectory = IrisPlatformHelpers.getInstance().getGameDir().toAbsolutePath().normalize();
+				MinecraftVibrisRuntimeHost candidateHost = new MinecraftVibrisRuntimeHost(gameDirectory);
 				adapter = new ThreadBoundVibrisRuntimeAdapter(
-					new MinecraftVibrisRuntimeHost(gameDirectory), candidateFrames,
+					candidateHost, candidateFrames,
 					IrisVibrisAutomation::frameWaitComplete);
 				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
 				frames = candidateFrames;
+				host = candidateHost;
 				if (bootstrap.ready()) {
 					Iris.logger.info("Vibris control service listening on 127.0.0.1:{}", bootstrap.port());
 					IrisVibrisAutomation.serverReady(bootstrap.port(), bootstrap.pendingShadersRoot());
@@ -44,6 +47,7 @@ public final class IrisVibrisLifecycle {
 					Iris.logger.warn("Vibris control service is listening but not ready; inspect GetStatus errors.");
 				}
 			} catch (Exception exception) {
+				host = null;
 				if (adapter != null) adapter.close();
 				else candidateFrames.close();
 				IrisVibrisAutomation.shutdownComplete();
@@ -70,11 +74,18 @@ public final class IrisVibrisLifecycle {
 		return current == null ? 0 : current.currentFrame();
 	}
 
+	public static String savePreset(String id) throws Exception {
+		MinecraftVibrisRuntimeHost current = host;
+		if (current == null) throw new IllegalStateException("Vibris runtime is not initialized");
+		return current.savePreset(id);
+	}
+
 	public static void close() {
 		synchronized (LOCK) {
 			VibrisBootstrap current = bootstrap;
 			bootstrap = null;
 			frames = null;
+			host = null;
 			if (current == null) return;
 			try {
 				current.close();

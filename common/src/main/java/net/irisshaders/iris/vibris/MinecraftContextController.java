@@ -232,7 +232,7 @@ final class MinecraftContextController {
 		return true;
 	}
 
-	private static String runningSave(IntegratedServer server) {
+	static String runningSave(IntegratedServer server) {
 		Path save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName();
 		return save == null ? "" : save.toString();
 	}

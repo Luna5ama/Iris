@@ -910,6 +910,22 @@ public class Iris {
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext, selection) -> {
 			dispatcher.register(
+				Commands.literal("vibris")
+					.then(Commands.literal("preset")
+						.then(Commands.literal("save")
+							.then(Commands.argument("id", StringArgumentType.word())
+								.executes(ctx -> {
+									try {
+										String preset = IrisVibrisLifecycle.savePreset(StringArgumentType.getString(ctx, "id"));
+										ctx.getSource().sendSuccess(() -> Component.literal("Saved Vibris preset: " + preset), false);
+										return 1;
+									} catch (Exception exception) {
+										ctx.getSource().sendFailure(Component.literal("Failed to save Vibris preset: " + exception.getMessage()));
+										return 0;
+									}
+								}))))
+			);
+			dispatcher.register(
 				Commands.literal("capture")
 					.then(Commands.argument("pass", StringArgumentType.word())
 						.executes(ctx -> {

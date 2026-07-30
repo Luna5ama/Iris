@@ -19,6 +19,7 @@ import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.server.IntegratedServer;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -57,6 +58,30 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	@Override
 	public ContextValidationResult validateContext(SceneContext context) {
 		return presets.validate(context);
+	}
+
+	String savePreset(String id) throws IOException {
+		IntegratedServer server = minecraft.getSingleplayerServer();
+		if (server == null || minecraft.level == null || minecraft.player == null) {
+			throw new IllegalStateException("A singleplayer world must be loaded");
+		}
+		String weather = minecraft.level.getThunderLevel(1.0f) > 0.0f ? "thunder" :
+			minecraft.level.getRainLevel(1.0f) > 0.0f ? "rain" : "clear";
+		String dimension = minecraft.level.dimension().identifier().toString();
+		return presets.save(new VibrisPresetCatalog.PresetSnapshot(
+			id,
+			MinecraftContextController.runningSave(server),
+			dimension,
+			minecraft.level.getDayTime(),
+			weather,
+			new VibrisPresetCatalog.CameraPreset(
+				dimension,
+				minecraft.player.getX(),
+				minecraft.player.getY(),
+				minecraft.player.getZ(),
+				minecraft.player.getYRot(),
+				minecraft.player.getXRot())
+		));
 	}
 
 	@Override
