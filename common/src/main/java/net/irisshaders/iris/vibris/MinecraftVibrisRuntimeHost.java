@@ -44,15 +44,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	@Override
 	public List<ScenePreset> presets() {
-		SceneContext.Resolution resolution = new SceneContext.Resolution(
-			minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight());
-		return presets.presets().stream().map(preset -> {
-			SceneContext context = preset.context();
-			SceneContext resolved = new SceneContext(
-				context.saveId(), context.dimensionId(), context.timePresetId(), context.weatherPresetId(),
-				context.cameraPresetId(), context.fov(), resolution, context.settingsPresetId());
-			return new ScenePreset(preset.presetId(), preset.displayName(), resolved);
-		}).toList();
+		return presets.presets();
 	}
 
 	@Override
@@ -68,19 +60,22 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		String weather = minecraft.level.getThunderLevel(1.0f) > 0.0f ? "thunder" :
 			minecraft.level.getRainLevel(1.0f) > 0.0f ? "rain" : "clear";
 		String dimension = minecraft.level.dimension().identifier().toString();
-		return presets.save(new VibrisPresetCatalog.PresetSnapshot(
+		String save = MinecraftContextController.runningSave(server);
+		return presets.save(new VibrisPresetCatalog.Preset(
 			id,
-			MinecraftContextController.runningSave(server),
+			save,
+			save,
 			dimension,
+			minecraft.player.getX(),
+			minecraft.player.getY(),
+			minecraft.player.getZ(),
+			minecraft.player.getYRot(),
+			minecraft.player.getXRot(),
+			minecraft.options.fov().get(),
 			minecraft.level.getDayTime(),
 			weather,
-			new VibrisPresetCatalog.CameraPreset(
-				dimension,
-				minecraft.player.getX(),
-				minecraft.player.getY(),
-				minecraft.player.getZ(),
-				minecraft.player.getYRot(),
-				minecraft.player.getXRot())
+			new SceneContext.Resolution(minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight()),
+			"default"
 		));
 	}
 
