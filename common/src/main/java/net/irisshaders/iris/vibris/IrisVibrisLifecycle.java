@@ -38,6 +38,9 @@ public final class IrisVibrisLifecycle {
 					candidateHost, candidateFrames,
 					IrisVibrisAutomation::frameWaitComplete);
 				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
+				if (bootstrap.pendingShadersRoot() != null) {
+					candidateHost.configureShaderConfigScratch(bootstrap.pendingShadersRoot());
+				}
 				frames = candidateFrames;
 				host = candidateHost;
 				if (bootstrap.ready()) {

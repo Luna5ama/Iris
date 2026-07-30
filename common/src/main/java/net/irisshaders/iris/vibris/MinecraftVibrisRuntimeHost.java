@@ -16,6 +16,7 @@ import dev.vibris.api.SceneContext;
 import dev.vibris.api.ScenePreset;
 import dev.vibris.api.TemporalResetResult;
 import dev.vibris.core.VibrisRuntimeHost;
+import dev.vibris.core.ShaderConfigFile;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
@@ -26,6 +27,7 @@ import net.minecraft.client.server.IntegratedServer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
@@ -35,6 +37,8 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final MinecraftVibrisCapture capture;
 	private final CaptureDebugControl debugControl;
 	private final Path shaderLink;
+	private final Path shaderConfigTarget;
+	private volatile Path shaderConfigScratch;
 	private volatile SceneContext activeContext;
 
 	public MinecraftVibrisRuntimeHost(Path gameDirectory) throws IOException {
@@ -44,6 +48,12 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		capture = new MinecraftVibrisCapture(minecraft);
 		debugControl = new CaptureDebugControl(gameDirectory, Iris.getCaptureManager(), Iris.getShaderDebugControl());
 		shaderLink = gameDirectory.resolve("shaderpacks/vibris/shaders");
+		shaderConfigTarget = gameDirectory.resolve("shaderpacks/vibris.txt");
+		shaderConfigScratch = gameDirectory.resolve("vibris/config/vibris.txt");
+	}
+
+	void configureShaderConfigScratch(Path pendingRoot) {
+		shaderConfigScratch = pendingRoot.resolveSibling("config").resolve("vibris.txt");
 	}
 
 	@Override
@@ -105,6 +115,9 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	@Override
 	public String debugControl(DebugControlCommand command) {
+		if (command instanceof DebugControlCommand.ReloadShader reload && reload.getConfig() != null) {
+			writeShaderConfig(reload.getConfig());
+		}
 		return debugControl.execute(command);
 	}
 
@@ -120,8 +133,11 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
-	public ReloadResult reload(CancellationToken cancellation) {
+	public ReloadResult reload(Map<String, String> config, CancellationToken cancellation) {
 		cancellation.throwIfCancellationRequested();
+		if (config != null) {
+			writeShaderConfig(config);
+		}
 		ReloadResult result = Iris.reloadVibrisShaderpack();
 		IrisVibrisAutomation.shaderReloaded(
 			result.successful(),
@@ -129,6 +145,10 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			Iris.getPipelineManager().getPipelineNullable(),
 			IrisVibrisLifecycle.currentFrame());
 		return result;
+	}
+
+	private void writeShaderConfig(Map<String, String> config) {
+		ShaderConfigFile.write(shaderConfigTarget, shaderConfigScratch, config);
 	}
 
 	@Override
