@@ -1,5 +1,6 @@
 package net.irisshaders.iris.vibris;
 
+import dev.luna5ama.vibris.capture.CaptureDebugControl;
 import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ArtifactSink;
@@ -7,6 +8,7 @@ import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.ContextValidationResult;
+import dev.vibris.api.DebugControlCommand;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
@@ -31,6 +33,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final MinecraftContextController contexts;
 	private final VibrisPresetCatalog presets;
 	private final MinecraftVibrisCapture capture;
+	private final CaptureDebugControl debugControl;
 	private final Path shaderLink;
 	private volatile SceneContext activeContext;
 
@@ -39,6 +42,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		presets = VibrisPresetCatalog.load(gameDirectory.resolve("config/vibris/presets.json"));
 		contexts = new MinecraftContextController(minecraft, presets);
 		capture = new MinecraftVibrisCapture(minecraft);
+		debugControl = new CaptureDebugControl(gameDirectory, Iris.getCaptureManager(), Iris.getShaderDebugControl());
 		shaderLink = gameDirectory.resolve("shaderpacks/vibris/shaders");
 	}
 
@@ -97,6 +101,11 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			context == null ? "" : context.saveId(),
 			minecraft.level == null ? "" : minecraft.level.dimension().identifier().toString(),
 			"");
+	}
+
+	@Override
+	public String debugControl(DebugControlCommand command) {
+		return debugControl.execute(command);
 	}
 
 	@Override
