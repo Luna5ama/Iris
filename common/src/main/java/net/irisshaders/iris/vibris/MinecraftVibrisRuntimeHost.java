@@ -1,6 +1,6 @@
 package net.irisshaders.iris.vibris;
 
-import dev.luna5ama.vibris.capture.CaptureDebugControl;
+import dev.luna5ama.vibris.capture.CaptureActionExecutor;
 import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ArtifactSink;
@@ -8,7 +8,7 @@ import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.ContextValidationResult;
-import dev.vibris.api.DebugControlCommand;
+import dev.vibris.api.RuntimeAction;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
@@ -35,7 +35,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final MinecraftContextController contexts;
 	private final VibrisPresetCatalog presets;
 	private final MinecraftVibrisCapture capture;
-	private final CaptureDebugControl debugControl;
+	private final CaptureActionExecutor actions;
 	private final Path shaderLink;
 	private final Path shaderConfigTarget;
 	private volatile Path shaderConfigScratch;
@@ -46,7 +46,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		presets = VibrisPresetCatalog.load(gameDirectory.resolve("config/vibris/presets.json"));
 		contexts = new MinecraftContextController(minecraft, presets);
 		capture = new MinecraftVibrisCapture(minecraft);
-		debugControl = new CaptureDebugControl(gameDirectory, Iris.getCaptureManager(), Iris.getShaderDebugControl());
+		actions = new CaptureActionExecutor(gameDirectory, Iris.getCaptureManager(), Iris.getShaderDebugControl());
 		shaderLink = gameDirectory.resolve("shaderpacks/vibris/shaders");
 		shaderConfigTarget = gameDirectory.resolve("shaderpacks/vibris.txt");
 		shaderConfigScratch = gameDirectory.resolve("vibris/config/vibris.txt");
@@ -114,11 +114,11 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
-	public CompletionStage<String> debugControl(DebugControlCommand command) {
-		if (command instanceof DebugControlCommand.ReloadShader reload && reload.getConfig() != null) {
+	public CompletionStage<String> executeAction(RuntimeAction action) {
+		if (action instanceof RuntimeAction.ReloadShader reload && reload.getConfig() != null) {
 			writeShaderConfig(reload.getConfig());
 		}
-		return debugControl.execute(command);
+		return actions.execute(action);
 	}
 
 	@Override
