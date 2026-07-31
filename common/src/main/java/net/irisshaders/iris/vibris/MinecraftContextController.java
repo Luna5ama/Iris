@@ -34,6 +34,11 @@ final class MinecraftContextController {
 
 	CompletionStage<ContextApplyResult> apply(SceneContext context, CancellationToken cancellation) {
 		cancellation.throwIfCancellationRequested();
+		if (minecraft.getLevelSource() == null) {
+			CompletableFuture<ContextApplyResult> result = new CompletableFuture<>();
+			pollForClientInitialization(context, cancellation, System.nanoTime() + TIMEOUT_NANOS, result);
+			return result;
+		}
 		VibrisPresetCatalog.ResolvedContext resolved;
 		try {
 			resolved = presets.resolve(context);
@@ -55,6 +60,24 @@ final class MinecraftContextController {
 			result.complete(ContextApplyResult.failure(context, failureMessage(exception)));
 		}
 		return result;
+	}
+
+	private void pollForClientInitialization(
+		SceneContext context,
+		CancellationToken cancellation,
+		long deadline,
+		CompletableFuture<ContextApplyResult> result
+	) {
+		pollLater(result, () -> {
+			if (cancelled(cancellation, result)) return;
+			if (minecraft.getLevelSource() != null) {
+				apply(context, cancellation).whenComplete((value, failure) -> complete(result, value, failure));
+			} else if (System.nanoTime() >= deadline) {
+				result.complete(ContextApplyResult.failure(context, "Timed out waiting for Minecraft initialization."));
+			} else {
+				pollForClientInitialization(context, cancellation, deadline, result);
+			}
+		});
 	}
 
 	private CompletionStage<ContextApplyResult> applyLoadedSave(
