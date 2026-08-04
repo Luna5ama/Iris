@@ -246,13 +246,20 @@ public class TransformPatcher {
 				}
 			});
 			Map<PatchShaderType, String> transformed = transformer.transform(inputs, parameters);
-			transformed.replaceAll((type, source) -> sourceMaps.get(type).appendMetadataTo(source));
+			appendSourceMapMetadata(transformed, sourceMaps);
 			return transformed;
 		} catch (TransformationException | ParsingException | IllegalStateException | IllegalArgumentException e) {
 			// print the offending programs and rethrow to stop the loading process
 			ShaderPrinter.printProgram("errored_" + name).addSources(inputs).print();
 			throw new ShaderCompileException(name, e);
 		}
+	}
+
+	static void appendSourceMapMetadata(Map<PatchShaderType, String> transformed,
+										Map<PatchShaderType, ShaderSourceMap> sourceMaps) {
+		transformed.replaceAll((type, source) -> source == null
+			? null
+			: sourceMaps.get(type).appendMetadataTo(source));
 	}
 
 	private static void markGeneratedSourceLocations(TranslationUnit tree) {
