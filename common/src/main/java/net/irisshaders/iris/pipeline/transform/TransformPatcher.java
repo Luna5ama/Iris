@@ -1,13 +1,17 @@
 package net.irisshaders.iris.pipeline.transform;
 
+import io.github.douira.glsl_transformer.GLSLLexer;
 import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
 import io.github.douira.glsl_transformer.ast.node.Version;
 import io.github.douira.glsl_transformer.ast.node.VersionStatement;
+import io.github.douira.glsl_transformer.ast.node.external_declaration.ExternalDeclaration;
+import io.github.douira.glsl_transformer.ast.node.statement.Statement;
 import io.github.douira.glsl_transformer.ast.print.PrintType;
 import io.github.douira.glsl_transformer.ast.query.Root;
 import io.github.douira.glsl_transformer.ast.query.RootSupplier;
 import io.github.douira.glsl_transformer.ast.transform.EnumASTTransformer;
+import io.github.douira.glsl_transformer.ast.transform.NumberedSourceLocation;
 import io.github.douira.glsl_transformer.ast.transform.TransformationException;
 import io.github.douira.glsl_transformer.parser.ParsingException;
 import io.github.douira.glsl_transformer.token_filter.ChannelFilter;
@@ -40,12 +44,14 @@ import net.irisshaders.iris.pipeline.transform.transformer.SodiumTransformer;
 import net.irisshaders.iris.pipeline.transform.transformer.TextureTransformer;
 import net.irisshaders.iris.pipeline.transform.transformer.VanillaCoreTransformer;
 import net.irisshaders.iris.pipeline.transform.transformer.VanillaTransformer;
+import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
 import net.irisshaders.iris.shaderpack.texture.TextureStage;
 import org.antlr.v4.runtime.Token;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.ref.SoftReference;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -65,9 +71,9 @@ import java.util.regex.Pattern;
  * the patcher, the cache should be disabled with {@link #useCache}.
  * <p>
  * NOTE: This patcher expects (and ensures) that the string doesn't contain any
- * (!) preprocessor directives. The only allowed ones are #extension and #pragma
- * as they are considered "parsed" directives. If any other directive appears in
- * the string, it will throw.
+ * (!) unparsed preprocessor directives. The allowed directives are #extension,
+ * #pragma, and Iris-generated #line directives carrying source locations. If any
+ * other directive appears in the string, it will throw.
  */
 public class TransformPatcher {
 	// TODO: Only do the NewLines patches if the source code isn't from
@@ -76,6 +82,9 @@ public class TransformPatcher {
 		@Override
 		public boolean isTokenAllowed(Token token) {
 			if (!super.isTokenAllowed(token)) {
+				if (token.getType() == GLSLLexer.NR_LINE) {
+					return true;
+				}
 				throw new IllegalArgumentException("Unparsed preprocessor directives such as '" + token.getText()
 					+ "' may not be present at this stage of shader processing!");
 			}
@@ -85,6 +94,8 @@ public class TransformPatcher {
 	private static final boolean useCache = true;
 	private static final Map<CacheKey, SoftReference<Map<PatchShaderType, String>>> cache = new LRUCache<>(256);
 	private static final List<String> internalPrefixes = List.of("iris_", "irisMain", "moj_import");
+	private static final int IRIS_GENERATED_SOURCE_ID = 1_000_000_000;
+	private static final String IRIS_GENERATED_SOURCE_NAME = "<Iris-generated shader code>";
 	private static final Pattern versionPattern = Pattern.compile("#version\\s+(\\d+)", Pattern.DOTALL);
 	private static final EnumASTTransformer<Parameters, PatchShaderType> transformer;
 	static Logger LOGGER = LogManager.getLogger(TransformPatcher.class);
@@ -94,6 +105,7 @@ public class TransformPatcher {
 			{
 				setRootSupplier(RootSupplier.PREFIX_UNORDERED_ED_EXACT);
 				setParsingCacheStrategy(ParsingCacheStrategy.TWO_TIER);
+				setParseLineDirectives(true);
 			}
 
 			@Override
@@ -209,6 +221,12 @@ public class TransformPatcher {
 			if (IrisLimits.VK_CONFORMANCE) {
 				LayoutTransformer.transformGrouped(transformer, trees, parameters);
 			}
+
+			for (TranslationUnit tree : trees.values()) {
+				if (tree != null) {
+					markGeneratedSourceLocations(tree);
+				}
+			}
 		});
 		transformer.setTokenFilter(parseTokenFilter);
 	}
@@ -220,12 +238,30 @@ public class TransformPatcher {
 		try {
 			// set shader name
 			parameters.name = name;
-			return transformer.transform(inputs, parameters);
+			EnumMap<PatchShaderType, ShaderSourceMap> sourceMaps = new EnumMap<>(PatchShaderType.class);
+			inputs.forEach((type, source) -> {
+				if (source != null) {
+					sourceMaps.put(type, ShaderSourceMap.parse(source)
+						.withSourcePath(IRIS_GENERATED_SOURCE_ID, IRIS_GENERATED_SOURCE_NAME));
+				}
+			});
+			Map<PatchShaderType, String> transformed = transformer.transform(inputs, parameters);
+			transformed.replaceAll((type, source) -> sourceMaps.get(type).appendMetadataTo(source));
+			return transformed;
 		} catch (TransformationException | ParsingException | IllegalStateException | IllegalArgumentException e) {
 			// print the offending programs and rethrow to stop the loading process
 			ShaderPrinter.printProgram("errored_" + name).addSources(inputs).print();
 			throw new ShaderCompileException(name, e);
 		}
+	}
+
+	private static void markGeneratedSourceLocations(TranslationUnit tree) {
+		tree.getRoot().nodeIndex.index.values().stream()
+			.flatMap(Collection::stream)
+			.filter(node -> node instanceof ExternalDeclaration || node instanceof Statement)
+			.filter(node -> node.getSourceLocation() == null || !node.getSourceLocation().canPrint())
+			.forEach(node -> node.setSourceLocation(
+				new NumberedSourceLocation(0, 1, IRIS_GENERATED_SOURCE_ID)));
 	}
 
 	private static Map<PatchShaderType, String> transform(String name, String vertex, String geometry, String tessControl, String tessEval, String fragment,
@@ -249,7 +285,7 @@ public class TransformPatcher {
 
 		// if there is no cache result, transform the shaders
 		if (result == null) {
-			transformer.setPrintType(Iris.getIrisConfig().areDebugOptionsEnabled() ? PrintType.INDENTED : PrintType.SIMPLE);
+			transformer.setPrintType(Iris.getIrisConfig().areDebugOptionsEnabled() ? PrintType.INDENTED_ANNOTATED : PrintType.SIMPLE_ANNOTATED);
 			EnumMap<PatchShaderType, String> inputs = new EnumMap<>(PatchShaderType.class);
 			inputs.put(PatchShaderType.VERTEX, vertex);
 			inputs.put(PatchShaderType.GEOMETRY, geometry);
@@ -285,7 +321,7 @@ public class TransformPatcher {
 
 		// if there is no cache result, transform the shaders
 		if (result == null) {
-			transformer.setPrintType(Iris.getIrisConfig().areDebugOptionsEnabled() ? PrintType.INDENTED : PrintType.SIMPLE);
+			transformer.setPrintType(Iris.getIrisConfig().areDebugOptionsEnabled() ? PrintType.INDENTED_ANNOTATED : PrintType.SIMPLE_ANNOTATED);
 			EnumMap<PatchShaderType, String> inputs = new EnumMap<>(PatchShaderType.class);
 			inputs.put(PatchShaderType.COMPUTE, compute);
 

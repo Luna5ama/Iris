@@ -6,6 +6,7 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
+import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL20C;
@@ -28,13 +29,14 @@ public class GlShader extends GlResource {
 	}
 
 	private static int createShader(ShaderType type, String name, String src) {
+		ShaderSourceMap sourceMap = ShaderSourceMap.parse(src);
 		int handle = GlStateManager.glCreateShader(type.id);
-		ShaderWorkarounds.safeShaderSource(handle, src);
+		ShaderWorkarounds.safeShaderSource(handle, sourceMap.sourceWithoutMetadata());
 		GlStateManager.glCompileShader(handle);
 
 		GLDebug.nameObject(KHRDebug.GL_SHADER, handle, name + "(" + type.name().toLowerCase(Locale.ROOT) + ")");
 
-		String log = IrisRenderSystem.getShaderInfoLog(handle);
+		String log = sourceMap.remapLog(IrisRenderSystem.getShaderInfoLog(handle));
 
 		if (!log.isEmpty()) {
 			LOGGER.warn("Shader compilation log for " + name + ": " + log);

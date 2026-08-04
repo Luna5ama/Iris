@@ -2,10 +2,10 @@ package net.irisshaders.iris.shaderpack.preprocessor;
 
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
-import it.unimi.dsi.fastutil.HashCommon;
-import it.unimi.dsi.fastutil.Pair;
-import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
 import net.irisshaders.iris.helpers.StringPair;
+import net.irisshaders.iris.shaderpack.include.IncludedSource;
+import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
+import net.irisshaders.iris.shaderpack.include.SourceLine;
 import org.anarres.cpp.Feature;
 import org.anarres.cpp.LexerException;
 import org.anarres.cpp.Preprocessor;
@@ -15,20 +15,31 @@ import org.anarres.cpp.Token;
 import java.lang.ref.SoftReference;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class JcppProcessor {
-	private static final ConcurrentHashMap<Pair<HashCode, List<StringPair>>, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<CacheKey, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
 
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, List<StringPair> environmentDefines) {
+		return glslPreprocessSource(source, ImmutableOrigins.EMPTY, environmentDefines);
+	}
+
+	public static String glslPreprocessSource(IncludedSource source, List<StringPair> environmentDefines) {
+		return glslPreprocessSource(source.text(), source.lines(), environmentDefines);
+	}
+
+	private static String glslPreprocessSource(String source, List<SourceLine> origins, List<StringPair> environmentDefines) {
 		if (CACHE.size() > 1024) {
 			CACHE.clear();
 			System.out.println("JCPP cache cleared");
 		}
 
-		var key = new ObjectObjectImmutablePair<>(
+		var key = new CacheKey(
 			Hashing.sha512().hashString(source, StandardCharsets.UTF_8),
+			hashOrigins(origins),
 			environmentDefines
 		);
 
@@ -37,16 +48,17 @@ public class JcppProcessor {
 			if (cached != null) {
 				return v;
 			} else {
-				String processed = glslPreprocessSourceUncached(source, environmentDefines);
+				String processed = glslPreprocessSourceUncached(source, origins, environmentDefines);
 				return new SoftReference<>(processed);
 			}
 		}).get();
 	}
 
 	// Derived from GlShader from Canvas, licenced under LGPL
-	private static String glslPreprocessSourceUncached(String source, List<StringPair> environmentDefines) {
+	private static String glslPreprocessSourceUncached(String source, List<SourceLine> origins, List<StringPair> environmentDefines) {
 		if (source.contains(GlslCollectingListener.VERSION_MARKER)
-			|| source.contains(GlslCollectingListener.EXTENSION_MARKER)) {
+			|| source.contains(GlslCollectingListener.EXTENSION_MARKER)
+			|| ShaderSourceMap.containsReservedMarker(source)) {
 			throw new RuntimeException("Some shader author is trying to exploit internal Iris implementation details, stop!");
 		}
 
@@ -85,23 +97,131 @@ public class JcppProcessor {
 		pp.addInput(new StringLexerSource(source, true));
 		pp.addFeature(Feature.KEEPCOMMENTS);
 
-		final StringBuilder builder = new StringBuilder();
+		SourceMappingWriter writer = new SourceMappingWriter(origins);
 
 		try {
 			for (; ; ) {
 				final Token tok = pp.token();
 				if (tok == null) break;
 				if (tok.getType() == Token.EOF) break;
-				builder.append(tok.getText());
+				writer.append(tok);
 			}
 		} catch (final Exception e) {
 			throw new RuntimeException("GLSL source pre-processing failed", e);
 		}
 
-		builder.append("\n");
+		writer.appendTrailingNewline();
 
-		source = listener.collectLines() + builder;
+		source = listener.collectLines() + writer.output();
+		source = ShaderSourceMap.appendMetadata(source, writer.sourcePaths());
 
 		return source;
+	}
+
+	private static HashCode hashOrigins(List<SourceLine> origins) {
+		var hasher = Hashing.sha512().newHasher();
+		for (SourceLine origin : origins) {
+			hasher.putUnencodedChars(origin.path().getPathString()).putInt(origin.line());
+		}
+		return hasher.hash();
+	}
+
+	private record CacheKey(HashCode sourceHash, HashCode originsHash, List<StringPair> environmentDefines) {
+	}
+
+	private static final class ImmutableOrigins {
+		private static final List<SourceLine> EMPTY = List.of();
+	}
+
+	private static final class SourceMappingWriter {
+		private final StringBuilder builder = new StringBuilder();
+		private final StringBuilder leadingWhitespace = new StringBuilder();
+		private final List<SourceLine> origins;
+		private final Map<String, Integer> sourceIds = new TreeMap<>();
+		private final Map<Integer, String> sourcePaths = new TreeMap<>();
+		private Integer currentSourceId;
+		private int currentSourceLine;
+		private boolean lineStart = true;
+
+		private SourceMappingWriter(List<SourceLine> origins) {
+			this.origins = origins;
+			origins.stream().map(line -> line.path().getPathString()).distinct().sorted()
+				.forEach(path -> {
+					int sourceId = sourceIds.size() + 1;
+					sourceIds.put(path, sourceId);
+					sourcePaths.put(sourceId, path);
+				});
+		}
+
+		private void append(Token token) {
+			String text = token.getText();
+			if (lineStart && text.chars().allMatch(Character::isWhitespace)) {
+				appendWhitespace(text);
+				return;
+			}
+
+			if (lineStart) {
+				SourceLine origin = originFor(token.getLine());
+				if (origin != null) {
+					int sourceId = sourceIds.get(origin.path().getPathString());
+					if (currentSourceId == null || currentSourceId != sourceId || currentSourceLine != origin.line()) {
+						builder.append("#line ").append(origin.line()).append(' ').append(sourceId).append('\n');
+						currentSourceId = sourceId;
+						currentSourceLine = origin.line();
+					}
+				}
+				builder.append(leadingWhitespace);
+				leadingWhitespace.setLength(0);
+			}
+
+			appendText(text);
+		}
+
+		private void appendWhitespace(String text) {
+			int lastNewline = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'));
+			if (lastNewline < 0) {
+				leadingWhitespace.append(text);
+				return;
+			}
+			builder.append(leadingWhitespace).append(text, 0, lastNewline + 1);
+			leadingWhitespace.setLength(0);
+			advanceLines(text);
+			lineStart = true;
+			if (lastNewline < text.length() - 1) {
+				leadingWhitespace.append(text.substring(lastNewline + 1));
+			}
+		}
+
+		private void appendText(String text) {
+			builder.append(text);
+			advanceLines(text);
+			lineStart = text.endsWith("\n") || text.endsWith("\r");
+		}
+
+		private void advanceLines(String text) {
+			for (int i = 0; i < text.length(); i++) {
+				if (text.charAt(i) == '\n') {
+					currentSourceLine++;
+				}
+			}
+		}
+
+		private SourceLine originFor(int flattenedLine) {
+			return flattenedLine >= 1 && flattenedLine <= origins.size() ? origins.get(flattenedLine - 1) : null;
+		}
+
+		private void appendTrailingNewline() {
+			builder.append(leadingWhitespace);
+			leadingWhitespace.setLength(0);
+			builder.append('\n');
+		}
+
+		private String output() {
+			return builder.toString();
+		}
+
+		private Map<Integer, String> sourcePaths() {
+			return sourcePaths;
+		}
 	}
 }

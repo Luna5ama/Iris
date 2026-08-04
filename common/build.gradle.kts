@@ -66,6 +66,12 @@ dependencies {
     modCompileOnly("io.github.douira:glsl-transformer:3.0.0-pre3")
     modCompileOnly("org.anarres:jcpp:1.4.14")
 
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.anarres:jcpp:1.4.14")
+    testImplementation("io.github.douira:glsl-transformer:3.0.0-pre3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
     compileOnly("dev.luna5ama:gl-wrapper-core:1.1.0")
     compileOnly("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
     compileOnly("dev.luna5ama:vibris-capture")
@@ -142,6 +148,10 @@ loom {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     processResources {
         filesMatching("fabric.mod.json") {
             expand(mapOf("version" to project.version))

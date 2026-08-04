@@ -312,29 +312,19 @@ public class ShaderPack {
 				return null;
 			}
 
-			ImmutableList<String> lines = includeProcessor.getIncludedFile(path);
+			var includedSource = includeProcessor.getIncludedSource(path);
 
-			if (lines == null || lines.isEmpty()) {
+			if (includedSource.lines().isEmpty()) {
 				return null;
-			}
-
-			StringBuilder builder = new StringBuilder();
-
-			for (String line : lines) {
-				builder.append(line);
-				builder.append('\n');
 			}
 
 			// Apply GLSL preprocessor to source, while making environment defines available.
 			//
 			// This uses similar techniques to the *.properties preprocessor to avoid actually putting
 			// #define statements in the actual source - instead, we tell the preprocessor about them
-			// directly. This removes one obstacle to accurate reporting of line numbers for errors,
-			// though there exist many more (such as relocating all #extension directives and similar things)
-			String source = builder.toString();
-			source = JcppProcessor.glslPreprocessSource(source, finalEnvironmentDefines1);
-
-			return source;
+			// directly. Source locations retained by the include processor are converted to #line
+			// directives after preprocessing so later shader transformations can preserve them.
+			return JcppProcessor.glslPreprocessSource(includedSource, finalEnvironmentDefines1);
 		};
 
 		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + dimensionMap.getOrDefault(new NamespacedId("*", "*"), "")), sourceProvider, shaderProperties, this);

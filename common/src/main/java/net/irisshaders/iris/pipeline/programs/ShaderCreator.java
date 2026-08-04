@@ -27,6 +27,7 @@ import net.irisshaders.iris.pipeline.fallback.ShaderSynthesizer;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.pipeline.transform.ShaderPrinter;
 import net.irisshaders.iris.pipeline.transform.TransformPatcher;
+import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
 import net.irisshaders.iris.shaderpack.loading.ProgramId;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 import net.irisshaders.iris.shadows.ShadowRenderTargets;
@@ -209,10 +210,11 @@ public class ShaderCreator {
 	private static int createShader(String name, ShaderType shaderType, String source) {
 		if (source == null) return -1;
 
+		ShaderSourceMap sourceMap = ShaderSourceMap.parse(source);
 		int shader = GlStateManager.glCreateShader(shaderType.id);
-		GlStateManager.glShaderSource(shader, source);
+		GlStateManager.glShaderSource(shader, sourceMap.sourceWithoutMetadata());
 		GlStateManager.glCompileShader(shader);
-		String log = IrisRenderSystem.getShaderInfoLog(shader);
+		String log = sourceMap.remapLog(IrisRenderSystem.getShaderInfoLog(shader));
 
 		if (!log.isEmpty()) {
 			Iris.logger.warn("Shader compilation log for " + name + ": " + log);
