@@ -46,7 +46,18 @@ final class MinecraftContextController {
 			return CompletableFuture.completedFuture(ContextApplyResult.failure(context, exception.getMessage()));
 		}
 		IntegratedServer server = minecraft.getSingleplayerServer();
+		if (server != null && requiresSaveSwitch(runningSave(server), resolved.saveName())) {
+			return switchSave(server, context, resolved, cancellation);
+		}
 		if (server != null) return applyLoadedSave(server, context, resolved, cancellation);
+		return openSave(context, resolved, cancellation);
+	}
+
+	private CompletionStage<ContextApplyResult> openSave(
+		SceneContext context,
+		VibrisPresetCatalog.ResolvedContext resolved,
+		CancellationToken cancellation
+	) {
 		if (!minecraft.getLevelSource().levelExists(resolved.saveName())) {
 			return failed(context, "The configured singleplayer save does not exist.");
 		}
@@ -60,6 +71,23 @@ final class MinecraftContextController {
 			result.complete(ContextApplyResult.failure(context, failureMessage(exception)));
 		}
 		return result;
+	}
+
+	private CompletionStage<ContextApplyResult> switchSave(
+		IntegratedServer server,
+		SceneContext context,
+		VibrisPresetCatalog.ResolvedContext resolved,
+		CancellationToken cancellation
+	) {
+		try {
+			// The client disconnect loop only finishes after the integrated server has begun shutting down.
+			// Vibris runs from inside a client task, where closing the connection alone cannot make that progress.
+			server.halt(false);
+			minecraft.disconnectWithSavingScreen();
+			return openSave(context, resolved, cancellation);
+		} catch (Exception exception) {
+			return failed(context, failureMessage(exception));
+		}
 	}
 
 	private void pollForClientInitialization(
@@ -86,11 +114,6 @@ final class MinecraftContextController {
 		VibrisPresetCatalog.ResolvedContext resolved,
 		CancellationToken cancellation
 	) {
-		String runningSave = runningSave(server);
-		if (!runningSave.equals(resolved.saveName())) {
-			return failed(context, "Another singleplayer save is running: expected " + resolved.saveName() +
-				", got " + runningSave + ".");
-		}
 		CompletableFuture<ContextApplyResult> result = new CompletableFuture<>();
 		applyOnServer(server, context, resolved, cancellation).whenComplete((ignored, failure) ->
 			minecraft.execute(() -> {
@@ -258,6 +281,10 @@ final class MinecraftContextController {
 	static String runningSave(IntegratedServer server) {
 		Path save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName();
 		return save == null ? "" : save.toString();
+	}
+
+	static boolean requiresSaveSwitch(String runningSave, String requestedSave) {
+		return !runningSave.equals(requestedSave);
 	}
 
 	private static float angleDifference(float first, float second) {
