@@ -115,9 +115,6 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	@Override
 	public CompletionStage<String> executeAction(RuntimeAction action) {
-		if (action instanceof RuntimeAction.ReloadShader reload && reload.getConfig() != null) {
-			writeShaderConfig(reload.getConfig());
-		}
 		return actions.execute(action);
 	}
 
