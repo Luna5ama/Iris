@@ -102,7 +102,7 @@ class IrisVibrisRuntimeAdapterTest {
 		}
 
 		@Override
-		public ReloadResult reload(CancellationToken cancellation) {
+		public ReloadResult reload(Map<String, String> config, CancellationToken cancellation) {
 			requireClientThread();
 			return ReloadResult.success(List.of());
 		}

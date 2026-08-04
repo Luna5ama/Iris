@@ -4,6 +4,7 @@ import dev.luna5ama.vibris.capture.ShaderDebugHost;
 import dev.luna5ama.vibris.capture.StorageBufferInfo;
 import dev.luna5ama.vibris.capture.TextureCatalog;
 import dev.luna5ama.vibris.capture.TextureInfo;
+import dev.vibris.api.ReloadResult;
 import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.gl.texture.TextureAccess;
 import net.irisshaders.iris.pipeline.CustomTextureManager;
@@ -23,10 +24,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class IrisShaderDebugHost implements ShaderDebugHost {
 	private static final DateTimeFormatter SCREENSHOT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
+	private final Supplier<ReloadResult> shaderReloader;
 
+	public IrisShaderDebugHost() {
+		this(Iris::reloadVibrisShaderpack);
+	}
+
+	IrisShaderDebugHost(Supplier<ReloadResult> shaderReloader) {
+		this.shaderReloader = shaderReloader;
+	}
 
 	@Override
 	public String shaderPackName() {
@@ -34,8 +44,16 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 	}
 
 	@Override
-	public void reloadShaders() throws Exception {
-		Iris.reload();
+	public void reloadShaders() {
+		ReloadResult result = shaderReloader.get();
+		if (!result.successful()) {
+			String message = result.diagnostics().stream()
+				.filter(diagnostic -> diagnostic.severity() == ReloadResult.Severity.ERROR)
+				.map(ReloadResult.Diagnostic::message)
+				.findFirst()
+				.orElse("Fixed Vibris shaderpack reload failed");
+			throw new IllegalStateException(message);
+		}
 	}
 
 	@Override
