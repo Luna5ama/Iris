@@ -11,9 +11,7 @@ import org.lwjgl.system.MemoryUtil;
 import java.io.IOException;
 import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
@@ -88,19 +86,24 @@ public abstract class CustomTextureData {
 		private static final ConcurrentHashMap<HashKey, SoftReference<ImageData>> imageCache = new ConcurrentHashMap<>();
 
 		public static PngData getOrCreate(TextureFilteringData filteringData, Path path) throws IOException {
-			ImageData imageData = null;
-			try (var fileChannel = FileChannel.open(path, StandardOpenOption.READ)) {
-				imageData = getOrCreate(fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size()));
-			} catch (UnsupportedOperationException e) {
-				try (var channel = Files.newByteChannel(path, StandardOpenOption.READ)) {
-					var buffer = MemoryUtil.memAlloc((int) channel.size());
-					try {
-						channel.read(buffer);
-						buffer.flip();
-						imageData = getOrCreate(buffer);
-					} finally {
-						MemoryUtil.memFree(buffer);
+			ImageData imageData;
+			try (var channel = Files.newByteChannel(path, StandardOpenOption.READ)) {
+				long fileSize = channel.size();
+				if (fileSize > Integer.MAX_VALUE) {
+					throw new IOException("Image is too large to load: " + path);
+				}
+
+				var buffer = MemoryUtil.memAlloc((int) fileSize);
+				try {
+					while (buffer.hasRemaining()) {
+						if (channel.read(buffer) < 0) {
+							throw new IOException("Unexpected end of image file: " + path);
+						}
 					}
+					buffer.flip();
+					imageData = getOrCreate(buffer);
+				} finally {
+					MemoryUtil.memFree(buffer);
 				}
 			}
 			if (imageData == null) {

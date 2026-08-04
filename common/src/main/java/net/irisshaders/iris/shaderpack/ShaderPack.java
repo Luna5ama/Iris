@@ -54,7 +54,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -599,15 +598,17 @@ public class ShaderPack {
 				customTextureData = CustomTextureData.PngData.getOrCreate(new TextureFilteringData(blur, clamp), pathData);
 			} else if (definition instanceof TextureDefinition.RawDefinition rawDefinition) {
 				long fileSize = Files.size(pathData);
+				if (fileSize > Integer.MAX_VALUE) {
+					throw new IOException("Raw texture is too large to load: " + pathData);
+				}
 				var content = ByteBuffer.allocateDirect((int) fileSize);
-				try (FileChannel channel = FileChannel.open(pathData, StandardOpenOption.READ)) {
-					channel.read(content);
-					content.flip();
-				} catch (UnsupportedOperationException ignored) {
-					try (var channel = Files.newByteChannel(pathData, StandardOpenOption.READ)) {
-						channel.read(content);
-						content.flip();
+				try (var channel = Files.newByteChannel(pathData, StandardOpenOption.READ)) {
+					while (content.hasRemaining()) {
+						if (channel.read(content) < 0) {
+							throw new IOException("Unexpected end of raw texture file: " + pathData);
+						}
 					}
+					content.flip();
 				}
 				customTextureData = switch (rawDefinition.getTarget()) {
 					case TEXTURE_1D ->
