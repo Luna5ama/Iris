@@ -2,6 +2,7 @@ package net.irisshaders.iris.mixin;
 
 import com.google.common.collect.ImmutableSet;
 import com.mojang.blaze3d.opengl.GlProgram;
+import dev.luna5ama.vibris.capture.GraphicsProgramRegistry;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
 import net.irisshaders.iris.mixinterface.ShaderInstanceInterface;
@@ -31,6 +32,10 @@ import static net.irisshaders.iris.compat.SkipList.shouldSkipList;
 
 @Mixin(GlProgram.class)
 public abstract class MixinCompiledShaderProgram implements ShaderInstanceInterface {
+	@Inject(method = "close", at = @At("HEAD"))
+	private void iris$unregisterGraphicsCaptureProgram(CallbackInfo ci) {
+		GraphicsProgramRegistry.unregister(((GlProgram) (Object) this).getProgramId());
+	}
 	@Unique
 	private static final ImmutableSet<String> ATTRIBUTE_LIST = ImmutableSet.of("Position", "Color", "Normal", "UV0", "UV1", "UV2");
 

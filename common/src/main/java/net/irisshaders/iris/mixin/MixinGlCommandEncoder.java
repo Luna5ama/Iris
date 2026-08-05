@@ -22,6 +22,8 @@ import net.irisshaders.iris.shadows.ShadowRenderingState;
 import net.irisshaders.iris.vertices.ImmediateState;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL46C;
+import org.lwjgl.opengl.GL31C;
+import org.lwjgl.opengl.GL32C;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -37,6 +39,54 @@ import java.util.List;
 
 @Mixin(GlCommandEncoder.class)
 public class MixinGlCommandEncoder {
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_drawArrays(III)V"))
+	private void iris$captureDrawArrays(int mode, int first, int count) {
+		if (!Iris.getCaptureManager().drawArrays(mode, first, count, 1)) {
+			GlStateManager._drawArrays(mode, first, count);
+		}
+	}
+
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL31;glDrawArraysInstanced(IIII)V"))
+	private void iris$captureDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
+		if (!Iris.getCaptureManager().drawArrays(mode, first, count, instanceCount)) {
+			GL31C.glDrawArraysInstanced(mode, first, count, instanceCount);
+		}
+	}
+
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_drawElements(IIIJ)V"))
+	private void iris$captureDrawElements(int mode, int count, int type, long offset) {
+		if (!Iris.getCaptureManager().drawElements(iris$capturePrimitiveMode(mode), count, type, offset, 0, 1)) {
+			GlStateManager._drawElements(mode, count, type, offset);
+		}
+	}
+
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL32;glDrawElementsBaseVertex(IIIJI)V"))
+	private void iris$captureDrawElementsBaseVertex(int mode, int count, int type, long offset, int baseVertex) {
+		if (!Iris.getCaptureManager().drawElements(iris$capturePrimitiveMode(mode), count, type, offset, baseVertex, 1)) {
+			GL32C.glDrawElementsBaseVertex(mode, count, type, offset, baseVertex);
+		}
+	}
+
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL31;glDrawElementsInstanced(IIIJI)V"))
+	private void iris$captureDrawElementsInstanced(int mode, int count, int type, long offset, int instanceCount) {
+		if (!Iris.getCaptureManager().drawElements(iris$capturePrimitiveMode(mode), count, type, offset, 0, instanceCount)) {
+			GL31C.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
+		}
+	}
+
+	@Redirect(method = "drawFromBuffers", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL32;glDrawElementsInstancedBaseVertex(IIIJII)V"))
+	private void iris$captureDrawElementsInstancedBaseVertex(
+		int mode, int count, int type, long offset, int instanceCount, int baseVertex
+	) {
+		if (!Iris.getCaptureManager().drawElements(iris$capturePrimitiveMode(mode), count, type, offset, baseVertex, instanceCount)) {
+			GL32C.glDrawElementsInstancedBaseVertex(mode, count, type, offset, instanceCount, baseVertex);
+		}
+	}
+
+	@Unique
+	private static int iris$capturePrimitiveMode(int mode) {
+		return mode == GL46C.GL_TRIANGLES && ImmediateState.usingTessellation ? GL46C.GL_PATCHES : mode;
+	}
 	@Shadow
 	@Nullable
 	private RenderPipeline lastPipeline;

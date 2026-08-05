@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.mojang.blaze3d.opengl.GlStateManager;
+import dev.luna5ama.vibris.capture.GraphicsProgramRegistry;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.JsonOps;
@@ -153,7 +154,9 @@ public class ShaderCreator {
 
 		return new ShaderSupplier(shaderKey, id, () -> {
 			try {
-				return new ExtendedShader(id.getFinally(), name, vertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
+				int program = id.getFinally();
+				GraphicsProgramRegistry.register(program, source.getName(), vertex, tessControl, tessEval, geometry, fragment);
+				return new ExtendedShader(program, name, vertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
 					CommonUniforms.addDynamicUniforms(uniforms, FogMode.PER_VERTEX);
 					customUniforms.assignTo(uniforms);
 					BuiltinReplacementUniforms.addBuiltinReplacementUniforms(uniforms);
