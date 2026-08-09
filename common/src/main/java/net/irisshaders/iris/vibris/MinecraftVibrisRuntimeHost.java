@@ -132,6 +132,8 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	@Override
 	public ReloadResult reload(Map<String, String> config, CancellationToken cancellation) {
 		cancellation.throwIfCancellationRequested();
+		minecraft.setScreen(null);
+		minecraft.options.hideGui = true;
 		if (config != null) {
 			writeShaderConfig(config);
 		}

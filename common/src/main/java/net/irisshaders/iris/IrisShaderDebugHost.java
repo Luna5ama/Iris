@@ -12,22 +12,15 @@ import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import net.irisshaders.iris.targets.RenderTarget;
 import net.irisshaders.iris.targets.RenderTargets;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.Screenshot;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public final class IrisShaderDebugHost implements ShaderDebugHost {
-	private static final DateTimeFormatter SCREENSHOT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
 	private final Supplier<ReloadResult> shaderReloader;
 
 	public IrisShaderDebugHost() {
@@ -54,23 +47,6 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 				.orElse("Fixed Vibris shaderpack reload failed");
 			throw new IllegalStateException(message);
 		}
-	}
-
-	@Override
-	public void captureScreenshot(Consumer<Path> onSaved) {
-		Path gameDirectory = gameDirectory();
-		Path screenshot = nextScreenshot(gameDirectory.resolve("screenshots"));
-		Screenshot.grab(
-			gameDirectory.toFile(),
-			screenshot.getFileName().toString(),
-			Minecraft.getInstance().getMainRenderTarget(),
-			1,
-			message -> {
-				if (Files.isRegularFile(screenshot)) {
-					onSaved.accept(screenshot);
-				}
-			}
-		);
 	}
 
 	@Override
@@ -156,13 +132,4 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 		return texture.getTextureId().getAsInt();
 	}
 
-	private static Path nextScreenshot(Path directory) {
-		String base = "vibris_" + SCREENSHOT_TIME.format(LocalDateTime.now());
-		Path candidate = directory.resolve(base + ".png");
-		int suffix = 1;
-		while (Files.exists(candidate)) {
-			candidate = directory.resolve(base + "_" + suffix++ + ".png");
-		}
-		return candidate;
-	}
 }
