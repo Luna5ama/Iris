@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
@@ -31,7 +30,9 @@ import java.util.concurrent.CompletionStage;
 
 import static dev.vibris.api.CapturePlan.ArtifactFormat.BIN;
 import static dev.vibris.api.CapturePlan.ArtifactFormat.PNG;
-import static dev.vibris.api.CapturePlan.ArtifactFormat.RAW;
+import static dev.vibris.api.CapturePlan.ArtifactFormat.JSON;
+import static dev.vibris.api.CapturePlan.ArtifactRole.METADATA;
+import static dev.vibris.api.CapturePlan.ArtifactRole.PRIMARY;
 import static dev.vibris.api.ResourceCatalog.ResourceKind.BUFFER;
 import static dev.vibris.api.ResourceCatalog.ResourceKind.FINAL_FRAMEBUFFER;
 import static dev.vibris.api.ResourceCatalog.ResourceKind.TEXTURE;
@@ -52,8 +53,8 @@ class IrisCaptureTest {
 		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan plan = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
-			target(TEXTURE, "colortex0", RAW, "colortex0"),
-			target(BUFFER, "radiance_cache", BIN, "radiance_cache")));
+			target(TEXTURE, "colortex0.main", BIN, "colortex0-main"),
+			target(BUFFER, "iris_ssbo_6", BIN, "ssbo-6")));
 
 		var capture = adapter.capture(plan, new DirectorySink(output), CancellationToken.none())
 			.toCompletableFuture();
@@ -62,13 +63,14 @@ class IrisCaptureTest {
 		CaptureResult result = capture.join();
 
 		assertEquals(1, result.frameId());
-		assertEquals(1, result.artifacts().values().stream().map(ResourceCatalog.ResourceDescriptor::frameId)
+		assertEquals(1, result.groups().stream().map(CaptureResult.ArtifactGroup::resource)
+			.map(ResourceCatalog.ResourceDescriptor::frameId)
 			.distinct().count());
 		assertNotNull(ImageIO.read(output.resolve("beauty.png").toFile()));
-		assertEquals(32, Files.size(output.resolve("colortex0.raw")));
-		assertEquals(16, Files.size(output.resolve("radiance_cache.bin")));
-		assertTrue(Files.isRegularFile(output.resolve("colortex0.json")));
-		assertTrue(Files.isRegularFile(output.resolve("radiance_cache.json")));
+		assertEquals(32, Files.size(output.resolve("colortex0-main.bin")));
+		assertEquals(16, Files.size(output.resolve("ssbo-6.bin")));
+		assertTrue(Files.isRegularFile(output.resolve("colortex0-main.json")));
+		assertTrue(Files.isRegularFile(output.resolve("ssbo-6.json")));
 	}
 
 	@Test
@@ -77,23 +79,24 @@ class IrisCaptureTest {
 		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan bundle = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
-			target(TEXTURE, "colortex0", RAW, "colortex0"),
-			target(TEXTURE, "depthtex0", RAW, "depthtex0"),
-			target(BUFFER, "radiance_cache", BIN, "radiance_cache")));
+			target(TEXTURE, "colortex0.main", BIN, "colortex0-main"),
+			target(TEXTURE, "depthtex0", BIN, "depthtex0"),
+			target(BUFFER, "iris_ssbo_6", BIN, "ssbo-6")));
 		var capture = adapter.capture(bundle, new DirectorySink(output), CancellationToken.none())
 			.toCompletableFuture();
 		frames.renderedFrame();
-		assertEquals(List.of(1L), capture.join().artifacts().values().stream()
+		assertEquals(List.of(1L), capture.join().groups().stream()
+			.map(CaptureResult.ArtifactGroup::resource)
 			.map(ResourceCatalog.ResourceDescriptor::frameId).distinct().toList());
-		assertTrue(Files.exists(output.resolve("depthtex0.raw")));
+		assertTrue(Files.exists(output.resolve("depthtex0.bin")));
 
-		CapturePlan missing = new CapturePlan(List.of(target(TEXTURE, "missing", RAW, "missing")));
+		CapturePlan missing = new CapturePlan(List.of(target(TEXTURE, "missing", BIN, "missing")));
 		var failed = adapter.capture(missing, new DirectorySink(output), CancellationToken.none())
 			.toCompletableFuture();
 		frames.renderedFrame();
 		CompletionException failure = assertThrows(CompletionException.class, failed::join);
 		assertInstanceOf(CaptureResourceNotFoundException.class, failure.getCause());
-		assertFalse(Files.exists(output.resolve("missing.raw")));
+		assertFalse(Files.exists(output.resolve("missing.bin")));
 	}
 
 	private static CapturePlan.Target target(
@@ -102,7 +105,12 @@ class IrisCaptureTest {
 		CapturePlan.ArtifactFormat format,
 		String artifactName
 	) {
-		return new CapturePlan.Target(kind, logicalName, format, artifactName, 0, 0);
+		CapturePlan.ArtifactOutputSpec primary = new CapturePlan.ArtifactOutputSpec(
+			artifactName + "." + format.name().toLowerCase(java.util.Locale.ROOT), format, PRIMARY, null);
+		List<CapturePlan.ArtifactOutputSpec> outputs = kind == FINAL_FRAMEBUFFER
+			? List.of(primary)
+			: List.of(primary, new CapturePlan.ArtifactOutputSpec(artifactName + ".json", JSON, METADATA, null));
+		return new CapturePlan.Target(kind, logicalName, format, artifactName, 0, 0, outputs);
 	}
 
 	private record DirectorySink(Path root) implements ArtifactSink {
@@ -161,27 +169,32 @@ class IrisCaptureTest {
 			if (plan.targets().stream().anyMatch(target -> target.logicalName().equals("missing"))) {
 				throw new CaptureResourceNotFoundException("missing");
 			}
-			Map<String, ResourceCatalog.ResourceDescriptor> artifacts = new LinkedHashMap<>();
+			List<CaptureResult.ArtifactGroup> groups = new java.util.ArrayList<>();
 			for (CapturePlan.Target target : plan.targets()) {
 				write(target, sink);
 				long bytes = target.format() == PNG ? 16 : target.kind() == BUFFER ? 16 : 32;
-				artifacts.put(target.artifactName(), new ResourceCatalog.ResourceDescriptor(
+				ResourceCatalog.ResourceDescriptor resource = new ResourceCatalog.ResourceDescriptor(
 					target.logicalName(), target.kind(), 2, 2, 1, 1, 1, "test", 4,
-					ResourceCatalog.ScalarType.FLOAT32, bytes, frameId, target.logicalName()));
+					ResourceCatalog.ScalarType.FLOAT32, bytes, frameId, target.logicalName());
+				List<CaptureResult.CapturedArtifact> artifacts = target.outputs().stream()
+					.map(output -> new CaptureResult.CapturedArtifact(output.fileName(), output.format(),
+						output.role(), output.subresourceIndex()))
+					.toList();
+				groups.add(new CaptureResult.ArtifactGroup(target.artifactName(), resource, artifacts));
 			}
-			return new CaptureResult(frameId, artifacts);
+			return new CaptureResult(frameId, groups);
 		}
 
 		private static void write(CapturePlan.Target target, ArtifactSink sink) {
 			int bytes = target.kind() == BUFFER ? 16 : 32;
-			try (OutputStream output = sink.open(target.fileName())) {
+			try (OutputStream output = sink.open(target.outputs().getFirst().fileName())) {
 				if (target.format() == PNG) {
 					BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB);
 					ImageIO.write(image, "png", output);
 				} else {
 					output.write(new byte[bytes]);
 				}
-				if (target.format() == RAW || target.format() == BIN) {
+				if (target.kind() != FINAL_FRAMEBUFFER) {
 					try (OutputStream metadata = sink.open(target.metadataFileName())) {
 						metadata.write(("{\"byte_size\":" + bytes + "}")
 							.getBytes(java.nio.charset.StandardCharsets.UTF_8));

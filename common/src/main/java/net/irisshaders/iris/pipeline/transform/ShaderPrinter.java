@@ -5,6 +5,7 @@ import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,19 +24,47 @@ import java.util.stream.Stream;
 public class ShaderPrinter {
 	private static final Path debugOutDir = IrisPlatformHelpers.getInstance().getGameDir().resolve("patched_shaders");
 	private static final ConcurrentLinkedQueue<Future<?>> PENDING = new ConcurrentLinkedQueue<>();
+	private static final Object PENDING_LOCK = new Object();
 	private static AtomicBoolean outputLocationCleared = new AtomicBoolean(false);
 	private static int programCounter = 0;
 
 	public static void resetPrintState() {
-		while (!PENDING.isEmpty()) {
-			try {
-				PENDING.poll().get();
-			} catch (InterruptedException | ExecutionException e) {
-				// no-op
-			}
+		try {
+			awaitPendingWrites();
+		} catch (IOException e) {
+			Iris.logger.warn("Failed to finish debug patched shader writes", e);
 		}
 		outputLocationCleared.set(false);
 		programCounter = 0;
+	}
+
+	public static void awaitPendingWrites() throws IOException {
+		List<Future<?>> snapshot;
+		synchronized (PENDING_LOCK) {
+			snapshot = List.copyOf(PENDING);
+		}
+		IOException failure = null;
+		for (Future<?> future : snapshot) {
+			try {
+				future.get();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for patched shader writes", e);
+			} catch (ExecutionException e) {
+				IOException current = new IOException("A patched shader write failed", e.getCause());
+				if (failure == null) {
+					failure = current;
+				} else {
+					failure.addSuppressed(current);
+				}
+			}
+		}
+		synchronized (PENDING_LOCK) {
+			PENDING.removeAll(snapshot);
+		}
+		if (failure != null) {
+			throw failure;
+		}
 	}
 
 	public static void deleteIfClearing() {
@@ -126,7 +155,9 @@ public class ShaderPrinter {
 				return;
 			}
 			if (isActive) {
-				PENDING.add(ForkJoinPool.commonPool().submit(() -> {
+				Future<?> pending;
+				synchronized (PENDING_LOCK) {
+					pending = ForkJoinPool.commonPool().submit(() -> {
 					if (!outputLocationCleared.getAndSet(true)) {
 						try {
 							if (Files.exists(debugOutDir)) {
@@ -153,8 +184,11 @@ public class ShaderPrinter {
 						}
 					} catch (IOException e) {
 						Iris.logger.warn("Failed to write debug patched shader source", e);
+						throw new UncheckedIOException(e);
 					}
-				}));
+					});
+					PENDING.add(pending);
+				}
 			}
 		}
 	}

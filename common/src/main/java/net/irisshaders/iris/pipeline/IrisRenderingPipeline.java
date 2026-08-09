@@ -197,6 +197,9 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	private boolean shouldBindPBR;
 	private AbstractTexture currentNormalTexture;
 	private AbstractTexture currentSpecularTexture;
+	private int terrainAtlasTexture;
+	private int terrainNormalTexture;
+	private int terrainSpecularTexture;
 	private ColorSpace currentColorSpace;
 	private GlFramebuffer defaultFB;
 	private GlFramebuffer defaultFBAlt;
@@ -849,7 +852,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 	@Override
 	public int getCurrentSpecularTexture() {
-		return currentNormalTexture == null ? 0 : currentSpecularTexture.getTexture().iris$getGlId();
+		return currentSpecularTexture == null ? 0 : currentSpecularTexture.getTexture().iris$getGlId();
 	}
 
 	@Override
@@ -875,7 +878,21 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 				PBRTextureManager.notifyPBRTexturesChanged();
 			}
+
+			if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered() && isTerrainAtlasPhase(phase)) {
+				terrainAtlasTexture = albedoTex;
+				terrainNormalTexture = getCurrentNormalTexture();
+				terrainSpecularTexture = getCurrentSpecularTexture();
+			}
 		}
+	}
+
+	private static boolean isTerrainAtlasPhase(WorldRenderingPhase phase) {
+		return phase == WorldRenderingPhase.TERRAIN_SOLID
+			|| phase == WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED
+			|| phase == WorldRenderingPhase.TERRAIN_CUTOUT
+			|| phase == WorldRenderingPhase.TERRAIN_TRANSLUCENT
+			|| phase == WorldRenderingPhase.TRIPWIRE;
 	}
 
 	@Override
@@ -1327,6 +1344,26 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	@Override
 	public int getAlbedoTex() {
 		return albedoTex;
+	}
+
+	public int getTerrainAtlasTextureForDebug() {
+		return terrainAtlasTexture;
+	}
+
+	public int getTerrainNormalTextureForDebug() {
+		return terrainNormalTexture;
+	}
+
+	public int getTerrainSpecularTextureForDebug() {
+		return terrainSpecularTexture;
+	}
+
+	public Set<GlImage> getCustomImagesForDebug() {
+		return Set.copyOf(customImages);
+	}
+
+	public ShadowRenderTargets getShadowRenderTargetsForDebug() {
+		return shadowRenderTargets;
 	}
 
 	public Optional<ProgramSource> getDHTerrainShader() {

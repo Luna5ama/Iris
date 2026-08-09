@@ -3,6 +3,7 @@ package net.irisshaders.iris.vibris;
 import dev.luna5ama.vibris.capture.GlArtifactCapture;
 import dev.luna5ama.vibris.capture.GlCapturePlanExecutor;
 import dev.luna5ama.vibris.capture.GlCaptureMetadata;
+import dev.luna5ama.vibris.capture.StorageBufferInfo;
 import dev.luna5ama.vibris.capture.TextureCatalog;
 import dev.luna5ama.vibris.capture.TextureInfo;
 import dev.vibris.api.ArtifactSink;
@@ -10,12 +11,7 @@ import dev.vibris.api.CancellationToken;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ResourceCatalog;
-import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.IrisShaderDebugHost;
-import net.irisshaders.iris.gl.buffer.ShaderStorageBuffer;
-import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
-import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
-import net.irisshaders.iris.targets.RenderTargets;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,14 +34,16 @@ final class MinecraftVibrisCapture {
 			"beauty",
 			ResourceCatalog.ResourceKind.FINAL_FRAMEBUFFER,
 			minecraft.getMainRenderTarget().getColorTexture().iris$getGlId(),
-			frameId);
+			frameId,
+			"screenshot");
 		if (beauty != null) resources.add(beauty);
-		namedTextures().forEach((name, texture) -> {
+		shaderDebug.textureCatalog().getTextures().forEach(texture -> {
 			ResourceCatalog.ResourceDescriptor descriptor = textureDescriptor(
-				name,
+				texture.getName(),
 				ResourceCatalog.ResourceKind.TEXTURE,
-				texture,
-				frameId);
+				texture.getTextureId(),
+				frameId,
+				texture.getCategory());
 			if (descriptor != null) resources.add(descriptor);
 		});
 		namedBuffers().forEach((name, buffer) -> resources.add(new ResourceCatalog.ResourceDescriptor(
@@ -59,9 +57,10 @@ final class MinecraftVibrisCapture {
 			"binary",
 			0,
 			ResourceCatalog.ScalarType.UINT8,
-			buffer.getSize(),
+			buffer.getSizeBytes(),
 			frameId,
-			name)));
+			name,
+			buffer.getCategory(), "", "", "", 0, "", "")));
 		return new ResourceCatalog(resources);
 	}
 
@@ -73,7 +72,7 @@ final class MinecraftVibrisCapture {
 	) {
 		int finalFramebuffer = minecraft.getMainRenderTarget().getColorTexture().iris$getGlId();
 		Map<String, Integer> textures = namedTextures();
-		Map<String, ShaderStorageBuffer> buffers = namedBuffers();
+		Map<String, StorageBufferInfo> buffers = namedBuffers();
 		return GlCapturePlanExecutor.capture(
 			plan,
 			sink,
@@ -86,43 +85,35 @@ final class MinecraftVibrisCapture {
 		CapturePlan.Target target,
 		int finalFramebuffer,
 		Map<String, Integer> textures,
-		Map<String, ShaderStorageBuffer> buffers
+		Map<String, StorageBufferInfo> buffers
 	) {
 		return switch (target.kind()) {
 			case FINAL_FRAMEBUFFER -> finalFramebuffer;
 			case TEXTURE -> textures.get(target.logicalName());
 			case BUFFER -> {
-				ShaderStorageBuffer buffer = buffers.get(target.logicalName());
-				yield buffer == null ? null : buffer.getId();
+				StorageBufferInfo buffer = buffers.get(target.logicalName());
+				yield buffer == null ? null : buffer.getGlId();
 			}
+			case PATCHED_SHADERS -> throw new IllegalArgumentException(
+				"Patched shaders require directory artifact capture");
 		};
 	}
 
 	private Map<String, Integer> namedTextures() {
 		Map<String, Integer> textures = new LinkedHashMap<>();
 		TextureCatalog catalog = shaderDebug.textureCatalog();
-		for (TextureInfo texture : catalog.getColortex()) {
+		for (TextureInfo texture : catalog.getTextures()) {
 			textures.put(texture.getName(), texture.getTextureId());
 		}
-		for (TextureInfo texture : catalog.getCustom()) {
-			textures.putIfAbsent(texture.getName(), texture.getTextureId());
-		}
-		IrisRenderingPipeline pipeline = pipeline();
-		RenderTargets targets = pipeline.getRenderTargetsForDebug();
-		textures.put("depthtex0", targets.getDepthTexture().iris$getGlId());
-		textures.put("depthtex1", targets.getDepthTextureNoTranslucents().iris$getGlId());
-		textures.put("depthtex2", targets.getDepthTextureNoHand().iris$getGlId());
 		return textures;
 	}
 
-	private static Map<String, ShaderStorageBuffer> namedBuffers() {
-		Map<String, ShaderStorageBuffer> buffers = new LinkedHashMap<>();
-		for (ShaderStorageBuffer buffer : ShaderStorageBufferHolder.getActiveBuffers()) {
-			String name = buffer.getName();
-			if (name == null || name.isBlank()) name = "ssbo" + buffer.getIndex();
-			ShaderStorageBuffer conflict = buffers.putIfAbsent(name, buffer);
-			if (conflict != null && conflict.getIndex() != buffer.getIndex()) {
-				throw new IllegalStateException("Ambiguous shader storage buffer name: " + name);
+	private Map<String, StorageBufferInfo> namedBuffers() {
+		Map<String, StorageBufferInfo> buffers = new LinkedHashMap<>();
+		for (StorageBufferInfo buffer : shaderDebug.storageBuffers()) {
+			StorageBufferInfo conflict = buffers.putIfAbsent(buffer.getName(), buffer);
+			if (conflict != null && conflict.getGlId() != buffer.getGlId()) {
+				throw new IllegalStateException("Ambiguous shader storage buffer name: " + buffer.getName());
 			}
 		}
 		return buffers;
@@ -133,20 +124,16 @@ final class MinecraftVibrisCapture {
 		String name,
 		ResourceCatalog.ResourceKind kind,
 		int textureId,
-		long frameId
+		long frameId,
+		String category
 	) {
 		GlCaptureMetadata metadata = GlArtifactCapture.describeTextureOrNull(textureId, 0);
 		if (metadata == null) return null;
 		return new ResourceCatalog.ResourceDescriptor(
-			name, kind, metadata.getWidth(), metadata.getHeight(), metadata.getDepth(), 1, 1,
+			name, kind, metadata.getWidth(), metadata.getHeight(), metadata.getDepth(), metadata.getMipLevels(), 1,
 			metadata.getInternalFormat(), metadata.getChannelCount(), metadata.getScalarType(),
-			metadata.getByteSize(), frameId, name);
-	}
-
-	private static IrisRenderingPipeline pipeline() {
-		if (Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline pipeline) {
-			return pipeline;
-		}
-		throw new IllegalStateException("No Iris shader pipeline is active");
+			metadata.getByteSize(), frameId, name, category, metadata.getTextureTarget(),
+			metadata.getChannelLayout(), metadata.getNumericClass(), metadata.getComponentBits(),
+			metadata.getReadbackFormat(), metadata.getReadbackType());
 	}
 }

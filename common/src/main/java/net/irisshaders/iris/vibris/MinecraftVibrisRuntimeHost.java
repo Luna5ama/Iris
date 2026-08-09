@@ -178,6 +178,16 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
+	public CompletionStage<CaptureResult> capturePatchedShaders(
+		String artifactName,
+		ArtifactSink sink,
+		long frameId,
+		CancellationToken cancellation
+	) {
+		return actions.capturePatchedShaders(artifactName, sink, frameId, cancellation);
+	}
+
+	@Override
 	public void close() {
 		if ("vibris".equals(Iris.getCurrentPackName()) &&
 			Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline) {

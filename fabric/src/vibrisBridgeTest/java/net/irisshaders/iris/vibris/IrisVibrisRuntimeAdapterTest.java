@@ -127,7 +127,7 @@ class IrisVibrisRuntimeAdapterTest {
 			CancellationToken cancellation
 		) {
 			requireClientThread();
-			return new CaptureResult(frameId, Map.of());
+			return new CaptureResult(frameId, List.of());
 		}
 
 		@Override
