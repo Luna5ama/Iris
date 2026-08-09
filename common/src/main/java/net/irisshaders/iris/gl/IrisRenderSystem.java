@@ -4,6 +4,7 @@ import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
+import dev.luna5ama.vibris.capture.GpuTimingProgram;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.Iris;
@@ -353,6 +354,21 @@ public class IrisRenderSystem {
 		}
 	}
 
+	public static void dispatchCompute(
+		EnumMap<ShaderType, String> sources, GpuTimingProgram timingProgram, Vector3i workGroups
+	) {
+		Iris.getShaderDebugControl().beginCompute(timingProgram);
+		try {
+			if (!Iris.getCaptureManager().dispatchCompute(
+				sources.get(ShaderType.COMPUTE), timingProgram.getProgram(), workGroups.x, workGroups.y, workGroups.z
+			)) {
+				dispatchCompute(workGroups);
+			}
+		} finally {
+			Iris.getShaderDebugControl().endCompute();
+		}
+	}
+
 	public static void memoryBarrier(int barriers) {
 		RenderSystem.assertOnRenderThread();
 
@@ -529,6 +545,21 @@ public class IrisRenderSystem {
 		Iris.getShaderDebugControl().beginCompute();
 		try {
 			if (!Iris.getCaptureManager().dispatchComputeIndirect(sources.get(ShaderType.COMPUTE), passName, offset)) {
+				dispatchComputeIndirect(offset);
+			}
+		} finally {
+			Iris.getShaderDebugControl().endCompute();
+		}
+	}
+
+	public static void dispatchComputeIndirect(
+		EnumMap<ShaderType, String> sources, GpuTimingProgram timingProgram, long offset
+	) {
+		Iris.getShaderDebugControl().beginCompute(timingProgram);
+		try {
+			if (!Iris.getCaptureManager().dispatchComputeIndirect(
+				sources.get(ShaderType.COMPUTE), timingProgram.getProgram(), offset
+			)) {
 				dispatchComputeIndirect(offset);
 			}
 		} finally {

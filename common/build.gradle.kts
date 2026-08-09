@@ -70,6 +70,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.anarres:jcpp:1.4.14")
     testImplementation("io.github.douira:glsl-transformer:3.0.0-pre3")
+    testImplementation("dev.luna5ama:vibris-capture")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     compileOnly("dev.luna5ama:gl-wrapper-core:1.1.0")
