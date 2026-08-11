@@ -8,6 +8,7 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import dev.vibris.api.ResourceCatalog;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.irisshaders.iris.features.FeatureFlags;
 import net.irisshaders.iris.gl.IrisRenderSystem;
@@ -45,12 +46,14 @@ import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
+import net.irisshaders.iris.vibris.IrisVibrisPassCapture;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL15C;
 import org.lwjgl.opengl.GL20C;
 import org.lwjgl.opengl.GL30C;
 import org.lwjgl.opengl.GL43C;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
@@ -67,11 +70,13 @@ public class ShadowCompositeRenderer {
 	private final Object2ObjectMap<String, TextureAccess> irisCustomTextures;
 	private final WorldRenderingPipeline pipeline;
 	private final Set<GlImage> irisCustomImages;
+	private final IrisVibrisPassCapture vibrisPassCapture;
 
-	public ShadowCompositeRenderer(WorldRenderingPipeline pipeline, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, ShadowRenderTargets renderTargets, ShaderStorageBufferHolder holder,
+	public ShadowCompositeRenderer(WorldRenderingPipeline pipeline, IrisVibrisPassCapture vibrisPassCapture, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, ShadowRenderTargets renderTargets, ShaderStorageBufferHolder holder,
 								   TextureAccess noiseTexture, FrameUpdateNotifier updateNotifier,
 								   Object2ObjectMap<String, TextureAccess> customTextureIds, Set<GlImage> customImages, ImmutableMap<Integer, Boolean> explicitPreFlips, Object2ObjectMap<String, TextureAccess> irisCustomTextures, CustomUniforms customUniforms) {
 		this.pipeline = pipeline;
+		this.vibrisPassCapture = vibrisPassCapture;
 		this.noiseTexture = noiseTexture;
 		this.renderTargets = renderTargets;
 		this.customTextureIds = customTextureIds;
@@ -102,7 +107,11 @@ public class ShadowCompositeRenderer {
 			if (source == null || !source.isValid()) {
 				if (computes.length > 0 && computes[i] != null) {
 					ComputeOnlyPass pass = new ComputeOnlyPass();
+					pass.name = Arrays.stream(computes[i]).filter(Objects::nonNull).findFirst()
+						.map(ComputeSource::getName).orElse("unknown");
 					pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, renderTargets, holder);
+					pass.flipsAfterPass = flipped;
+					pass.captureHandle = vibrisPassCapture.register(ResourceCatalog.PassStage.SHADOW_COMPOSITE, pass.name);
 					passes.add(pass);
 				}
 				continue;
@@ -150,6 +159,8 @@ public class ShadowCompositeRenderer {
 					flippedAtLeastOnce.add(buffer);
 				}
 			});
+			pass.flipsAfterPass = renderTargets.snapshot();
+			pass.captureHandle = vibrisPassCapture.register(ResourceCatalog.PassStage.SHADOW_COMPOSITE, pass.name);
 		}
 
 		this.passes = passes.build();
@@ -197,56 +208,57 @@ public class ShadowCompositeRenderer {
 		GpuBuffer indices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).getBuffer(6);
 		VertexFormat.IndexType type = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).type();
 
-		try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Shadow composites", Minecraft.getInstance().getMainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
-			pass.setPipeline(CompositeRenderer.COMPOSITE_PIPELINE);
-			pass.setVertexBuffer(0, FullScreenQuadRenderer.INSTANCE.getQuad());
-			pass.setIndexBuffer(indices, type);
-
-			for (Pass renderPass : passes) {
-				boolean ranCompute = false;
-				for (ComputeProgram computeProgram : renderPass.computes) {
-					if (computeProgram != null) {
-						ranCompute = true;
-						computeProgram.use();
-						this.customUniforms.push(computeProgram);
-						com.mojang.blaze3d.pipeline.RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
-						computeProgram.dispatch(main.width, main.height);
-					}
+		for (Pass renderPass : passes) {
+			boolean ranCompute = false;
+			for (ComputeProgram computeProgram : renderPass.computes) {
+				if (computeProgram != null) {
+					ranCompute = true;
+					computeProgram.use();
+					this.customUniforms.push(computeProgram);
+					com.mojang.blaze3d.pipeline.RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+					computeProgram.dispatch(main.width, main.height);
 				}
+			}
 
-				if (ranCompute) {
-					IrisRenderSystem.memoryBarrier(GL43C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL43C.GL_TEXTURE_FETCH_BARRIER_BIT | GL43C.GL_SHADER_STORAGE_BARRIER_BIT);
+			if (ranCompute) {
+				IrisRenderSystem.memoryBarrier(GL43C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL43C.GL_TEXTURE_FETCH_BARRIER_BIT | GL43C.GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+
+			Program.unbind();
+
+			if (renderPass instanceof ComputeOnlyPass) {
+				vibrisPassCapture.captureBoundary(renderPass.captureHandle, renderPass.flipsAfterPass);
+				continue;
+			}
+
+			if (!renderPass.mipmappedBuffers.isEmpty()) {
+				GlStateManager._activeTexture(GL15C.GL_TEXTURE0);
+
+				for (int index : renderPass.mipmappedBuffers) {
+					setupMipmapping(renderTargets.get(index), renderPass.stageReadsFromAlt.contains(index));
 				}
+			}
 
-				Program.unbind();
+			float scaledWidth = renderTargets.getResolution() * renderPass.viewportScale.scale();
+			float scaledHeight = renderTargets.getResolution() * renderPass.viewportScale.scale();
+			int beginWidth = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportX());
+			int beginHeight = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportY());
+			GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
 
-				if (renderPass instanceof ComputeOnlyPass) {
-					continue;
-				}
-
-				if (!renderPass.mipmappedBuffers.isEmpty()) {
-					GlStateManager._activeTexture(GL15C.GL_TEXTURE0);
-
-					for (int index : renderPass.mipmappedBuffers) {
-						setupMipmapping(renderTargets.get(index), renderPass.stageReadsFromAlt.contains(index));
-					}
-				}
-
+			try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+				() -> "Shadow composite " + renderPass.name,
+				Minecraft.getInstance().getMainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
+				pass.setPipeline(CompositeRenderer.COMPOSITE_PIPELINE);
+				pass.setVertexBuffer(0, FullScreenQuadRenderer.INSTANCE.getQuad());
+				pass.setIndexBuffer(indices, type);
 				pass.iris$setCustomPass(renderPass);
-
-				float scaledWidth = renderTargets.getResolution() * renderPass.viewportScale.scale();
-				float scaledHeight = renderTargets.getResolution() * renderPass.viewportScale.scale();
-				int beginWidth = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportX());
-				int beginHeight = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportY());
-				GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
 
 				renderPass.framebuffer.bind();
 				renderPass.program.use();
-
 				this.customUniforms.push(renderPass.program);
-
 				pass.drawIndexed(0, 0, 6, 1);
 			}
+			vibrisPassCapture.captureBoundary(renderPass.captureHandle, renderPass.flipsAfterPass);
 		}
 
 		// Make sure to reset the viewport to how it was before... Otherwise weird issues could occur.
@@ -374,6 +386,8 @@ public class ShadowCompositeRenderer {
 		ImmutableSet<Integer> mipmappedBuffers;
 		ViewportData viewportScale;
 		ComputeProgram[] computes;
+		ImmutableSet<Integer> flipsAfterPass;
+		IrisVibrisPassCapture.PassHandle captureHandle;
 
 		protected void destroy() {
 			this.program.destroy();

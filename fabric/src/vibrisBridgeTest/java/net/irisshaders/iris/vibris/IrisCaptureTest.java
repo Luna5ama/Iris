@@ -55,7 +55,7 @@ class IrisCaptureTest {
 		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan plan = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
-			target(TEXTURE, "colortex0.main", BIN, "colortex0-main"),
+			target(TEXTURE, "colortex0", BIN, "colortex0-main"),
 			target(BUFFER, "iris_ssbo_6", BIN, "ssbo-6")));
 
 		var capture = adapter.capture(plan, new DirectorySink(output), CancellationToken.none())
@@ -81,7 +81,7 @@ class IrisCaptureTest {
 		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(new CaptureHost(), frames);
 		CapturePlan bundle = new CapturePlan(List.of(
 			target(FINAL_FRAMEBUFFER, "beauty", PNG, "beauty"),
-			target(TEXTURE, "colortex0.main", BIN, "colortex0-main"),
+			target(TEXTURE, "colortex0", BIN, "colortex0-main"),
 			target(TEXTURE, "depthtex0", BIN, "depthtex0"),
 			target(BUFFER, "iris_ssbo_6", BIN, "ssbo-6")));
 		var capture = adapter.capture(bundle, new DirectorySink(output), CancellationToken.none())
@@ -112,7 +112,9 @@ class IrisCaptureTest {
 		List<CapturePlan.ArtifactOutputSpec> outputs = kind == FINAL_FRAMEBUFFER
 			? List.of(primary)
 			: List.of(primary, new CapturePlan.ArtifactOutputSpec(artifactName + ".json", JSON, METADATA, null));
-		return new CapturePlan.Target(kind, logicalName, format, artifactName, 0, 0, outputs);
+		ResourceCatalog.TextureView view = kind == TEXTURE ? ResourceCatalog.TextureView.MAIN : null;
+		return new CapturePlan.Target(
+			new CapturePlan.ResourceSelector(kind, logicalName, view, 0, 0), format, artifactName, outputs);
 	}
 
 	private record DirectorySink(Path root) implements ArtifactSink {
@@ -173,16 +175,20 @@ class IrisCaptureTest {
 			long frameId,
 			CancellationToken cancellation
 		) {
-			if (plan.targets().stream().anyMatch(target -> target.logicalName().equals("missing"))) {
+			if (plan.targets().stream().anyMatch(target -> target.resource().logicalName().equals("missing"))) {
 				throw new CaptureResourceNotFoundException("missing");
 			}
 			List<CaptureResult.ArtifactGroup> groups = new java.util.ArrayList<>();
 			for (CapturePlan.Target target : plan.targets()) {
 				write(target, sink);
-				long bytes = target.format() == PNG ? 16 : target.kind() == BUFFER ? 16 : 32;
-				ResourceCatalog.ResourceDescriptor resource = new ResourceCatalog.ResourceDescriptor(
-					target.logicalName(), target.kind(), 2, 2, 1, 1, 1, "test", 4,
-					ResourceCatalog.ScalarType.FLOAT32, bytes, frameId, target.logicalName());
+				long bytes = target.format() == PNG ? 16 : target.resource().kind() == BUFFER ? 16 : 32;
+				ResourceCatalog.ResourceDescriptor resource = ResourceCatalog.ResourceDescriptor.of(
+					target.resource().logicalName(), target.resource().kind(),
+					target.resource().kind() == TEXTURE ? List.of(ResourceCatalog.TextureView.MAIN) : List.of(),
+					2, 2, 1, target.resource().kind() == TEXTURE ? 1 : 0,
+					target.resource().kind() == TEXTURE ? 1 : 0, "test", 4,
+					ResourceCatalog.ScalarType.FLOAT32, bytes, frameId, target.resource().logicalName(),
+					"test", "texture_2d", "RGBA", "float", 32, "RGBA", "FLOAT");
 				List<CaptureResult.CapturedArtifact> artifacts = target.outputs().stream()
 					.map(output -> new CaptureResult.CapturedArtifact(output.fileName(), output.format(),
 						output.role(), output.subresourceIndex()))
@@ -192,8 +198,18 @@ class IrisCaptureTest {
 			return new CaptureResult(frameId, groups);
 		}
 
+		@Override
+		public CompletionStage<CapturePlan.AfterPassReceipt> captureAfterPass(
+			CapturePlan.AfterPassRequest request,
+			ArtifactSink sink,
+			CancellationToken cancellation
+		) {
+			return java.util.concurrent.CompletableFuture.failedFuture(
+				new UnsupportedOperationException("No pass boundary in this capture fixture"));
+		}
+
 		private static void write(CapturePlan.Target target, ArtifactSink sink) {
-			int bytes = target.kind() == BUFFER ? 16 : 32;
+			int bytes = target.resource().kind() == BUFFER ? 16 : 32;
 			try (OutputStream output = sink.open(target.outputs().getFirst().fileName())) {
 				if (target.format() == PNG) {
 					BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB);
@@ -201,7 +217,7 @@ class IrisCaptureTest {
 				} else {
 					output.write(new byte[bytes]);
 				}
-				if (target.kind() != FINAL_FRAMEBUFFER) {
+				if (target.resource().kind() != FINAL_FRAMEBUFFER) {
 					try (OutputStream metadata = sink.open(target.metadataFileName())) {
 						metadata.write(("{\"byte_size\":" + bytes + "}")
 							.getBytes(java.nio.charset.StandardCharsets.UTF_8));

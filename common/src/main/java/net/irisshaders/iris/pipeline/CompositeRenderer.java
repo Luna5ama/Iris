@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import dev.vibris.api.ResourceCatalog;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.irisshaders.iris.features.FeatureFlags;
 import net.irisshaders.iris.gl.GLDebug;
@@ -55,6 +56,7 @@ import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
+import net.irisshaders.iris.vibris.IrisVibrisPassCapture;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -94,14 +96,16 @@ public class CompositeRenderer {
 	private final TextureStage textureStage;
 	private final WorldRenderingPipeline pipeline;
 	private final CompositePass compositePass;
+	private final IrisVibrisPassCapture vibrisPassCapture;
 
-	public CompositeRenderer(WorldRenderingPipeline pipeline, CompositePass compositePass, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, RenderTargets renderTargets, ShaderStorageBufferHolder holder,
+	public CompositeRenderer(WorldRenderingPipeline pipeline, IrisVibrisPassCapture vibrisPassCapture, CompositePass compositePass, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, RenderTargets renderTargets, ShaderStorageBufferHolder holder,
 							 TextureAccess noiseTexture, FrameUpdateNotifier updateNotifier,
 							 CenterDepthSampler centerDepthSampler, BufferFlipper bufferFlipper,
 							 Supplier<ShadowRenderTargets> shadowTargetsSupplier, TextureStage textureStage,
 							 Object2ObjectMap<String, TextureAccess> customTextureIds, Object2ObjectMap<String, TextureAccess> irisCustomTextures, Set<GlImage> customImages, ImmutableMap<Integer, Boolean> explicitPreFlips,
 							 CustomUniforms customUniforms) {
 		this.pipeline = pipeline;
+		this.vibrisPassCapture = vibrisPassCapture;
 		this.compositePass = compositePass;
 		this.noiseTexture = noiseTexture;
 		this.centerDepthSampler = centerDepthSampler;
@@ -137,6 +141,8 @@ public class CompositeRenderer {
 					ComputeOnlyPass pass = new ComputeOnlyPass();
 					pass.name = computes[i].length > 0 ? Arrays.stream(computes[i]).filter(Objects::nonNull).findFirst().map(ComputeSource::getName).orElse("unknown") : "unknown";
 					pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, shadowTargetsSupplier, holder);
+					pass.flipsAfterPass = flipped;
+					pass.captureHandle = vibrisPassCapture.register(stage(), pass.name);
 					passes.add(pass);
 				}
 				continue;
@@ -185,6 +191,8 @@ public class CompositeRenderer {
 					flippedAtLeastOnce.add(buffer);
 				}
 			});
+			pass.flipsAfterPass = bufferFlipper.snapshot();
+			pass.captureHandle = vibrisPassCapture.register(stage(), pass.name);
 
 			pass.drawBuffers = directives.getDrawBuffers();
 			pass.viewWidth = passWidth;
@@ -202,6 +210,15 @@ public class CompositeRenderer {
 		this.flippedAtLeastOnceFinal = flippedAtLeastOnce.build();
 
 		GlStateManager._glBindFramebuffer(GL30C.GL_READ_FRAMEBUFFER, 0);
+	}
+
+	private ResourceCatalog.PassStage stage() {
+		return switch (compositePass) {
+			case BEGIN -> ResourceCatalog.PassStage.BEGIN;
+			case PREPARE -> ResourceCatalog.PassStage.PREPARE;
+			case DEFERRED -> ResourceCatalog.PassStage.DEFERRED;
+			case COMPOSITE -> ResourceCatalog.PassStage.COMPOSITE;
+		};
 	}
 
 	private boolean hasComputes(ComputeSource[][] computes) {
@@ -277,61 +294,61 @@ public class CompositeRenderer {
 		GpuBuffer indices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).getBuffer(6);
 		VertexFormat.IndexType type = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).type();
 
-		try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Composites", Minecraft.getInstance().getMainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
-			renderPass.setPipeline(COMPOSITE_PIPELINE);
-			renderPass.setIndexBuffer(indices, type);
-			renderPass.setVertexBuffer(0, FullScreenQuadRenderer.INSTANCE.getQuad());
-
-			for (int i = 0, passesSize = passes.size(); i < passesSize; i++) {
-				Pass compositePass = passes.get(i);
-				GLDebug.pushGroup(20 * this.compositePass.ordinal() + i, compositePass.name);
-				boolean ranCompute = false;
-				for (ComputeProgram computeProgram : compositePass.computes) {
-					if (computeProgram != null) {
-						ranCompute = true;
-						computeProgram.use();
-						this.customUniforms.push(computeProgram);
-						computeProgram.dispatch(main.width, main.height);
-					}
+		for (int i = 0, passesSize = passes.size(); i < passesSize; i++) {
+			Pass compositePass = passes.get(i);
+			GLDebug.pushGroup(20 * this.compositePass.ordinal() + i, compositePass.name);
+			boolean ranCompute = false;
+			for (ComputeProgram computeProgram : compositePass.computes) {
+				if (computeProgram != null) {
+					ranCompute = true;
+					computeProgram.use();
+					this.customUniforms.push(computeProgram);
+					computeProgram.dispatch(main.width, main.height);
 				}
+			}
 
-				if (ranCompute) {
-					IrisRenderSystem.memoryBarrier(GL43C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL43C.GL_TEXTURE_FETCH_BARRIER_BIT | GL43C.GL_SHADER_STORAGE_BARRIER_BIT);
+			if (ranCompute) {
+				IrisRenderSystem.memoryBarrier(GL43C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL43C.GL_TEXTURE_FETCH_BARRIER_BIT | GL43C.GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+
+			Program.unbind();
+
+			if (compositePass instanceof ComputeOnlyPass) {
+				vibrisPassCapture.captureBoundary(compositePass.captureHandle, compositePass.flipsAfterPass);
+				GLDebug.popGroup();
+				continue;
+			}
+
+			if (!compositePass.mipmappedBuffers.isEmpty()) {
+				GlStateManager._activeTexture(GL15C.GL_TEXTURE0);
+
+				for (int index : compositePass.mipmappedBuffers) {
+					setupMipmapping(CompositeRenderer.this.renderTargets.get(index), compositePass.stageReadsFromAlt.contains(index));
 				}
+			}
 
-				Program.unbind();
+			float scaledWidth = compositePass.viewWidth * compositePass.viewportScale.scale();
+			float scaledHeight = compositePass.viewHeight * compositePass.viewportScale.scale();
+			int beginWidth = (int) (compositePass.viewWidth * compositePass.viewportScale.viewportX());
+			int beginHeight = (int) (compositePass.viewHeight * compositePass.viewportScale.viewportY());
+			GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
 
-				if (compositePass instanceof ComputeOnlyPass) {
-					GLDebug.popGroup();
-					continue;
-				}
-
-				if (!compositePass.mipmappedBuffers.isEmpty()) {
-					GlStateManager._activeTexture(GL15C.GL_TEXTURE0);
-
-					for (int index : compositePass.mipmappedBuffers) {
-						setupMipmapping(CompositeRenderer.this.renderTargets.get(index), compositePass.stageReadsFromAlt.contains(index));
-					}
-				}
-
+			try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+				() -> "Composite " + compositePass.name,
+				Minecraft.getInstance().getMainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
+				renderPass.setPipeline(COMPOSITE_PIPELINE);
+				renderPass.setIndexBuffer(indices, type);
+				renderPass.setVertexBuffer(0, FullScreenQuadRenderer.INSTANCE.getQuad());
 				renderPass.iris$setCustomPass(compositePass);
 
-				float scaledWidth = compositePass.viewWidth * compositePass.viewportScale.scale();
-				float scaledHeight = compositePass.viewHeight * compositePass.viewportScale.scale();
-				int beginWidth = (int) (compositePass.viewWidth * compositePass.viewportScale.viewportX());
-				int beginHeight = (int) (compositePass.viewHeight * compositePass.viewportScale.viewportY());
-				GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
-
 				compositePass.program.use();
-
-				// program is the identifier for composite :shrug:
 				this.customUniforms.push(compositePass.program);
-
 				renderPass.drawIndexed(0, 0, 6, 1);
-
-				BlendModeOverride.restore();
-				GLDebug.popGroup();
 			}
+
+			BlendModeOverride.restore();
+			vibrisPassCapture.captureBoundary(compositePass.captureHandle, compositePass.flipsAfterPass);
+			GLDebug.popGroup();
 		}
 
 
@@ -497,6 +514,8 @@ public class CompositeRenderer {
 		Program program;
 		BlendModeOverride blendModeOverride;
 		ComputeProgram[] computes;
+		ImmutableSet<Integer> flipsAfterPass;
+		IrisVibrisPassCapture.PassHandle captureHandle;
 		GlFramebuffer framebuffer;
 		ImmutableSet<Integer> flippedAtLeastOnce;
 		ImmutableSet<Integer> stageReadsFromAlt;

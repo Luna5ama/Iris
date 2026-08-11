@@ -139,6 +139,17 @@ class IrisVibrisRuntimeAdapterTest {
 		}
 
 		@Override
+		public CompletableFuture<CapturePlan.AfterPassReceipt> captureAfterPass(
+			CapturePlan.AfterPassRequest request,
+			ArtifactSink sink,
+			CancellationToken cancellation
+		) {
+			requireClientThread();
+			return CompletableFuture.failedFuture(
+				new UnsupportedOperationException("No pass boundary in this runtime fixture"));
+		}
+
+		@Override
 		public void close() {
 		}
 

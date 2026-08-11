@@ -187,6 +187,15 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
+	public CompletionStage<CapturePlan.AfterPassReceipt> captureAfterPass(
+		CapturePlan.AfterPassRequest request,
+		ArtifactSink sink,
+		CancellationToken cancellation
+	) {
+		return capture.captureAfterPass(request, sink, cancellation);
+	}
+
+	@Override
 	public CompletionStage<CaptureResult> capturePatchedShaders(
 		String artifactName,
 		ArtifactSink sink,
