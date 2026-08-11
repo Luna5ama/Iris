@@ -12,11 +12,15 @@ import java.util.concurrent.locks.LockSupport;
 
 public final class IrisVibrisLifecycle {
 	private static final Object LOCK = new Object();
+	private static final int IDLE_FRAMERATE_LIMIT = 5;
+	private static final long IDLE_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(15);
+	private static final long IDLE_FRAME_NANOS = TimeUnit.SECONDS.toNanos(1) / IDLE_FRAMERATE_LIMIT;
 	private static final ThreadLocal<Boolean> IDLE_LIMIT_SELECTED = ThreadLocal.withInitial(() -> false);
 	private static RenderedFrameClock frames;
 	private static VibrisBootstrap bootstrap;
 	private static volatile ThreadBoundVibrisRuntimeAdapter runtimeAdapter;
 	private static volatile Thread idleWaitThread;
+	private static volatile long idleSinceNanos = Long.MAX_VALUE;
 	private static volatile MinecraftVibrisRuntimeHost host;
 
 	private IrisVibrisLifecycle() {
@@ -42,12 +46,13 @@ public final class IrisVibrisLifecycle {
 				adapter = new ThreadBoundVibrisRuntimeAdapter(
 					candidateHost, candidateFrames,
 					IrisVibrisAutomation::frameWaitComplete,
-					IrisVibrisLifecycle::wakeIdleWait);
+					IrisVibrisLifecycle::runtimeActivityChanged);
 				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
 				if (bootstrap.pendingShadersRoot() != null) {
 					candidateHost.configureShaderConfigScratch(bootstrap.pendingShadersRoot());
 				}
 				frames = candidateFrames;
+				idleSinceNanos = System.nanoTime();
 				runtimeAdapter = adapter;
 				host = candidateHost;
 				if (bootstrap.ready()) {
@@ -59,6 +64,7 @@ public final class IrisVibrisLifecycle {
 			} catch (Exception exception) {
 				host = null;
 				runtimeAdapter = null;
+				idleSinceNanos = Long.MAX_VALUE;
 				if (adapter != null) adapter.close();
 				else candidateFrames.close();
 				IrisVibrisAutomation.shutdownComplete();
@@ -88,7 +94,7 @@ public final class IrisVibrisLifecycle {
 	public static int idleFramerateLimit(int configuredLimit) {
 		boolean idle = shouldThrottleIdle();
 		IDLE_LIMIT_SELECTED.set(idle);
-		return idle ? 1 : configuredLimit;
+		return idle ? IDLE_FRAMERATE_LIMIT : configuredLimit;
 	}
 
 	public static void limitDisplayFps(int framerateLimit) {
@@ -102,7 +108,7 @@ public final class IrisVibrisLifecycle {
 		Thread currentThread = Thread.currentThread();
 		idleWaitThread = currentThread;
 		try {
-			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+			long deadline = System.nanoTime() + IDLE_FRAME_NANOS;
 			while (shouldThrottleIdle()) {
 				long remaining = deadline - System.nanoTime();
 				if (remaining <= 0) return;
@@ -116,7 +122,14 @@ public final class IrisVibrisLifecycle {
 
 	private static boolean shouldThrottleIdle() {
 		ThreadBoundVibrisRuntimeAdapter current = runtimeAdapter;
-		return current != null && current.isIdle();
+		long idleSince = idleSinceNanos;
+		return current != null && current.isIdle() && idleSince != Long.MAX_VALUE &&
+			System.nanoTime() - idleSince >= IDLE_TIMEOUT_NANOS;
+	}
+
+	private static void runtimeActivityChanged(boolean active) {
+		idleSinceNanos = active ? Long.MAX_VALUE : System.nanoTime();
+		if (active) wakeIdleWait();
 	}
 
 	private static void wakeIdleWait() {
@@ -136,6 +149,7 @@ public final class IrisVibrisLifecycle {
 			bootstrap = null;
 			frames = null;
 			runtimeAdapter = null;
+			idleSinceNanos = Long.MAX_VALUE;
 			host = null;
 			wakeIdleWait();
 			if (current == null) return;
