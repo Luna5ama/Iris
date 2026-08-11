@@ -51,6 +51,7 @@
     "MixinMinecraft_Images",
     "MixinMinecraft_Keybinds",
     "MixinMinecraft_PipelineManagement",
+    "MixinMinecraft_VibrisFrameThrottle",
     "MixinModelViewBobbing",
     "MixinOptions_Entrypoint",
     "MixinParticleEngine",

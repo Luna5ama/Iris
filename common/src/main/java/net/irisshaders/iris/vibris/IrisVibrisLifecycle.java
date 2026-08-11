@@ -7,11 +7,16 @@ import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
 
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 public final class IrisVibrisLifecycle {
 	private static final Object LOCK = new Object();
+	private static final ThreadLocal<Boolean> IDLE_LIMIT_SELECTED = ThreadLocal.withInitial(() -> false);
 	private static RenderedFrameClock frames;
 	private static VibrisBootstrap bootstrap;
+	private static volatile ThreadBoundVibrisRuntimeAdapter runtimeAdapter;
+	private static volatile Thread idleWaitThread;
 	private static volatile MinecraftVibrisRuntimeHost host;
 
 	private IrisVibrisLifecycle() {
@@ -36,12 +41,14 @@ public final class IrisVibrisLifecycle {
 				MinecraftVibrisRuntimeHost candidateHost = new MinecraftVibrisRuntimeHost(gameDirectory);
 				adapter = new ThreadBoundVibrisRuntimeAdapter(
 					candidateHost, candidateFrames,
-					IrisVibrisAutomation::frameWaitComplete);
+					IrisVibrisAutomation::frameWaitComplete,
+					IrisVibrisLifecycle::wakeIdleWait);
 				bootstrap = VibrisBootstrap.start(gameDirectory, adapter);
 				if (bootstrap.pendingShadersRoot() != null) {
 					candidateHost.configureShaderConfigScratch(bootstrap.pendingShadersRoot());
 				}
 				frames = candidateFrames;
+				runtimeAdapter = adapter;
 				host = candidateHost;
 				if (bootstrap.ready()) {
 					Iris.logger.info("Vibris control service listening on 127.0.0.1:{}", bootstrap.port());
@@ -51,6 +58,7 @@ public final class IrisVibrisLifecycle {
 				}
 			} catch (Exception exception) {
 				host = null;
+				runtimeAdapter = null;
 				if (adapter != null) adapter.close();
 				else candidateFrames.close();
 				IrisVibrisAutomation.shutdownComplete();
@@ -77,6 +85,45 @@ public final class IrisVibrisLifecycle {
 		return current == null ? 0 : current.currentFrame();
 	}
 
+	public static int idleFramerateLimit(int configuredLimit) {
+		boolean idle = shouldThrottleIdle();
+		IDLE_LIMIT_SELECTED.set(idle);
+		return idle ? 1 : configuredLimit;
+	}
+
+	public static void limitDisplayFps(int framerateLimit) {
+		boolean idleLimit = IDLE_LIMIT_SELECTED.get();
+		IDLE_LIMIT_SELECTED.set(false);
+		if (!idleLimit) {
+			com.mojang.blaze3d.systems.RenderSystem.limitDisplayFPS(framerateLimit);
+			return;
+		}
+
+		Thread currentThread = Thread.currentThread();
+		idleWaitThread = currentThread;
+		try {
+			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+			while (shouldThrottleIdle()) {
+				long remaining = deadline - System.nanoTime();
+				if (remaining <= 0) return;
+				LockSupport.parkNanos(remaining);
+				if (currentThread.isInterrupted()) return;
+			}
+		} finally {
+			idleWaitThread = null;
+		}
+	}
+
+	private static boolean shouldThrottleIdle() {
+		ThreadBoundVibrisRuntimeAdapter current = runtimeAdapter;
+		return current != null && current.isIdle();
+	}
+
+	private static void wakeIdleWait() {
+		Thread current = idleWaitThread;
+		if (current != null) LockSupport.unpark(current);
+	}
+
 	public static String savePreset(String id) throws Exception {
 		MinecraftVibrisRuntimeHost current = host;
 		if (current == null) throw new IllegalStateException("Vibris runtime is not initialized");
@@ -88,7 +135,9 @@ public final class IrisVibrisLifecycle {
 			VibrisBootstrap current = bootstrap;
 			bootstrap = null;
 			frames = null;
+			runtimeAdapter = null;
 			host = null;
+			wakeIdleWait();
 			if (current == null) return;
 			try {
 				current.close();

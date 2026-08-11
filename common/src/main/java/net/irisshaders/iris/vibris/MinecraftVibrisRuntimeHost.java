@@ -23,6 +23,7 @@ import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
+import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -101,6 +102,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	@Override
 	public void executeOnClient(Runnable task) {
 		minecraft.execute(task);
+		GLFW.glfwPostEmptyEvent();
 	}
 
 	@Override
