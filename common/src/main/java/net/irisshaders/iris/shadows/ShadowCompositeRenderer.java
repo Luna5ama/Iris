@@ -44,6 +44,7 @@ import net.irisshaders.iris.targets.RenderTarget;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
+import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL15C;
 import org.lwjgl.opengl.GL20C;
@@ -283,8 +284,10 @@ public class ShadowCompositeRenderer {
 		ProgramBuilder builder;
 
 		try {
-			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
-				IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+			builder = IrisVibrisCompileCatalog.compileGraphics(
+				source.getName(), "shadowcomp", transformed,
+				() -> ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
+					IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 		} catch (RuntimeException e) {
 			// TODO: Better error handling
 			throw new RuntimeException("Shader compilation failed for shadow composite " + source.getName() + "!", e);
@@ -323,7 +326,9 @@ public class ShadowCompositeRenderer {
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					builder = IrisVibrisCompileCatalog.compileCompute(
+						source.getName() + ".csh", "shadowcomp", transformed,
+						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 				} catch (RuntimeException e) {
 					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed for shadowcomp compute " + source.getName() + "!", e);

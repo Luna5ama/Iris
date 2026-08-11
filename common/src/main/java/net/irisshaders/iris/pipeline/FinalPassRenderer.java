@@ -50,6 +50,7 @@ import net.irisshaders.iris.targets.RenderTargets;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
+import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
@@ -349,8 +350,10 @@ public class FinalPassRenderer {
 		ProgramBuilder builder;
 
 		try {
-			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
-				IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+			builder = IrisVibrisCompileCatalog.compileGraphics(
+				source.getName(), "final", transformed,
+				() -> ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
+					IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 		} catch (ShaderCompileException e) {
 			throw e;
 		} catch (RuntimeException e) {
@@ -404,7 +407,9 @@ public class FinalPassRenderer {
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					builder = IrisVibrisCompileCatalog.compileCompute(
+						source.getName() + ".csh", "final", transformed,
+						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 				} catch (ShaderCompileException e) {
 					throw e;
 				} catch (RuntimeException e) {

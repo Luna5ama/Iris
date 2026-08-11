@@ -5,6 +5,7 @@ import dev.vibris.api.CancellationToken;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResourceNotFoundException;
 import dev.vibris.api.CaptureResult;
+import dev.vibris.api.CompileCatalog;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
@@ -153,6 +154,11 @@ class IrisCaptureTest {
 		@Override
 		public TemporalResetResult resetTemporal(CancellationToken cancellation) {
 			return new TemporalResetResult(true);
+		}
+
+		@Override
+		public CompileCatalog compileCatalog(CancellationToken cancellation) {
+			return CompileCatalog.empty(0);
 		}
 
 		@Override

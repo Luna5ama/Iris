@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.luna5ama.vibris.capture.CaptureManager;
 import dev.luna5ama.vibris.capture.ShaderDebugControl;
+import dev.vibris.api.CompileCatalog;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
@@ -46,6 +47,7 @@ import net.irisshaders.iris.vertices.sodium.IrisEntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.ModelToEntityVertexSerializer;
 import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
 import net.irisshaders.iris.vibris.IrisVibrisEffectiveSettings;
+import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.minecraft.ChatFormatting;
 import net.minecraft.SharedConstants;
 import net.minecraft.util.Util;
@@ -630,13 +632,18 @@ public class Iris {
 
 		boolean loaded = loadExternalShaderpack("vibris");
 		WorldRenderingPipeline replacement = null;
+		CompileCatalog attemptedCatalog = null;
 		if (loaded) {
 			getPipelineManager().destroyPipeline();
+			ProgramSet programSet = currentPack.getProgramSet(dimension);
+			IrisVibrisCompileCatalog.Session compileSession = IrisVibrisCompileCatalog.begin(programSet);
 			try {
-				replacement = new IrisRenderingPipeline(currentPack.getProgramSet(dimension));
+				replacement = new IrisRenderingPipeline(programSet);
 			} catch (Exception exception) {
 				handleException(exception);
 				logger.error("Failed to create the Vibris pipeline, restoring the previous pipeline.", exception);
+			} finally {
+				attemptedCatalog = IrisVibrisCompileCatalog.finish(compileSession);
 			}
 		}
 
@@ -651,6 +658,7 @@ public class Iris {
 			replacement instanceof IrisRenderingPipeline;
 		if (active) {
 			getPipelineManager().installPipeline(dimension, replacement);
+			IrisVibrisCompileCatalog.publish(attemptedCatalog);
 			closeShaderpackFileSystem(previousZipFileSystem);
 			zipFileSystem = null;
 			EffectiveShaderSettings effectiveSettings = IrisVibrisEffectiveSettings.capture(
@@ -677,6 +685,9 @@ public class Iris {
 				"shaderpack",
 				0,
 				"The fixed Vibris shaderpack did not produce an active Iris pipeline."));
+		}
+		if (attemptedCatalog != null) {
+			IrisVibrisCompileCatalog.publish(attemptedCatalog);
 		}
 		return restored
 			? ReloadResult.failurePreservingActiveState(previousSettings, diagnostics)
@@ -753,6 +764,7 @@ public class Iris {
 		}
 
 		ProgramSet programs = currentPack.getProgramSet(dimensionId);
+		IrisVibrisCompileCatalog.Session compileSession = IrisVibrisCompileCatalog.begin(programs);
 
 		// We use DeferredWorldRenderingPipeline on 1.16, and NewWorldRendering pipeline on 1.17 when rendering shaders.
 		try {
@@ -766,6 +778,8 @@ public class Iris {
 			fallback = true;
 
 			return new VanillaRenderingPipeline();
+		} finally {
+			IrisVibrisCompileCatalog.publish(IrisVibrisCompileCatalog.finish(compileSession));
 		}
 	}
 

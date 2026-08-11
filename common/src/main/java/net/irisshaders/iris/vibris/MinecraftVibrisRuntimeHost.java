@@ -6,6 +6,7 @@ import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ArtifactSink;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
+import dev.vibris.api.CompileCatalog;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.ContextValidationResult;
 import dev.vibris.api.RuntimeAction;
@@ -150,6 +151,12 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	private void writeShaderConfig(Map<String, String> config) {
 		ShaderConfigFile.write(shaderConfigTarget, shaderConfigScratch, config);
+	}
+
+	@Override
+	public CompileCatalog compileCatalog(CancellationToken cancellation) {
+		cancellation.throwIfCancellationRequested();
+		return IrisVibrisCompileCatalog.current();
 	}
 
 	@Override

@@ -4,6 +4,7 @@ import dev.vibris.api.CancellationToken;
 import dev.vibris.api.ArtifactSink;
 import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
+import dev.vibris.api.CompileCatalog;
 import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
@@ -112,6 +113,12 @@ class IrisVibrisRuntimeAdapterTest {
 		public TemporalResetResult resetTemporal(CancellationToken cancellation) {
 			requireClientThread();
 			return new TemporalResetResult(true);
+		}
+
+		@Override
+		public CompileCatalog compileCatalog(CancellationToken cancellation) {
+			requireClientThread();
+			return CompileCatalog.empty(0);
 		}
 
 		@Override

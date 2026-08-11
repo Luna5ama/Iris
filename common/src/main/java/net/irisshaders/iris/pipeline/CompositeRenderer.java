@@ -54,6 +54,7 @@ import net.irisshaders.iris.targets.RenderTargets;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
+import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -377,8 +378,10 @@ public class CompositeRenderer {
 		ProgramBuilder builder;
 
 		try {
-			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
-				IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+			builder = IrisVibrisCompileCatalog.compileGraphics(
+				source.getName(), compositePass.name().toLowerCase(Locale.ROOT), transformed,
+				() -> ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
+					IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 		} catch (ShaderCompileException e) {
 			throw e;
 		} catch (RuntimeException e) {
@@ -434,7 +437,9 @@ public class CompositeRenderer {
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					builder = IrisVibrisCompileCatalog.compileCompute(
+						source.getName() + ".csh", compositePass.name().toLowerCase(Locale.ROOT), transformed,
+						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 				} catch (ShaderCompileException e) {
 					throw e;
 				} catch (RuntimeException e) {

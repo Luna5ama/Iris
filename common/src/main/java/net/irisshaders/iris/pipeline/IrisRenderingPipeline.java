@@ -95,6 +95,7 @@ import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
+import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.TextureFilteringMethod;
@@ -116,6 +117,7 @@ import org.lwjgl.opengl.GL30C;
 import org.lwjgl.opengl.GL43C;
 
 import java.io.IOException;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Objects;
@@ -410,12 +412,19 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		this.loadedShaders = new HashSet<>();
 
 
+		EnumMap<ShaderKey, Optional<ProgramSource>> resolvedPrograms = new EnumMap<>(ShaderKey.class);
+		for (ShaderKey key : ShaderKey.values()) {
+			Optional<ProgramSource> source = resolver.resolve(key.getProgram());
+			resolvedPrograms.put(key, source);
+			source.ifPresent(program -> IrisVibrisCompileCatalog.registerGraphicsIntent(key.getName(), program.getName(), program));
+		}
+
 		ShaderLoadingMap loadingMap = new ShaderLoadingMap(key -> {
 			try {
 				if (key.isShadow()) {
-					return createShadowShader(key.getName(), resolver.resolve(key.getProgram()), key);
+					return createShadowShader(key.getName(), resolvedPrograms.get(key), key);
 				} else {
-					return createShader(key.getName(), resolver.resolve(key.getProgram()), key);
+					return createShader(key.getName(), resolvedPrograms.get(key), key);
 				}
 			} catch (FakeChainedJsonException e) {
 				destroyShaders();
@@ -556,7 +565,9 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
+					builder = IrisVibrisCompileCatalog.compileCompute(
+						source.getName() + ".csh", "shadow", transformed,
+						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS));
 				} catch (ShaderCompileException e) {
 					throw e;
 				} catch (RuntimeException e) {
@@ -619,7 +630,9 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
+					builder = IrisVibrisCompileCatalog.compileCompute(
+						source.getName() + ".csh", "setup", transformed,
+						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
 				} catch (RuntimeException e) {
 					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed for setup compute " + source.getName() + "!", e);
