@@ -139,7 +139,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		if (config != null) {
 			writeShaderConfig(config);
 		}
-		ReloadResult result = Iris.reloadVibrisShaderpack();
+		ReloadResult result = Iris.reloadVibrisShaderpack(config);
 		IrisVibrisAutomation.shaderReloaded(
 			result.successful(),
 			shaderLink,

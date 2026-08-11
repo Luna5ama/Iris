@@ -33,7 +33,7 @@ public final class IrisShaderDebugHost implements ShaderDebugHost {
 	private final Supplier<ReloadResult> shaderReloader;
 
 	public IrisShaderDebugHost() {
-		this(Iris::reloadVibrisShaderpack);
+		this(() -> Iris.reloadVibrisShaderpack(null));
 	}
 
 	IrisShaderDebugHost(Supplier<ReloadResult> shaderReloader) {

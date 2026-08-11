@@ -6,6 +6,7 @@ import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResourceNotFoundException;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.ContextApplyResult;
+import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
 import dev.vibris.api.RuntimeStatus;
@@ -146,7 +147,7 @@ class IrisCaptureTest {
 
 		@Override
 		public ReloadResult reload(Map<String, String> config, CancellationToken cancellation) {
-			return ReloadResult.success(List.of());
+			return ReloadResult.success(EffectiveShaderSettings.empty(), List.of());
 		}
 
 		@Override

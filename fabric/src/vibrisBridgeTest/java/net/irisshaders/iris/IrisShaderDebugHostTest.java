@@ -1,5 +1,6 @@
 package net.irisshaders.iris;
 
+import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +16,7 @@ class IrisShaderDebugHostTest {
 		AtomicInteger reloads = new AtomicInteger();
 		IrisShaderDebugHost host = new IrisShaderDebugHost(() -> {
 			reloads.incrementAndGet();
-			return ReloadResult.success(List.of());
+			return ReloadResult.success(EffectiveShaderSettings.empty(), List.of());
 		});
 
 		host.reloadShaders();
@@ -31,7 +32,7 @@ class IrisShaderDebugHostTest {
 			0,
 			"Fixed Vibris shaderpack reload failed");
 		IrisShaderDebugHost host = new IrisShaderDebugHost(
-			() -> ReloadResult.failurePreservingActiveState(List.of(diagnostic)));
+			() -> ReloadResult.failurePreservingActiveState(EffectiveShaderSettings.empty(), List.of(diagnostic)));
 
 		IllegalStateException failure = assertThrows(IllegalStateException.class, host::reloadShaders);
 

@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.luna5ama.vibris.capture.CaptureManager;
 import dev.luna5ama.vibris.capture.ShaderDebugControl;
+import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -44,6 +45,7 @@ import net.irisshaders.iris.vertices.sodium.GlyphExtVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.IrisEntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.ModelToEntityVertexSerializer;
 import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
+import net.irisshaders.iris.vibris.IrisVibrisEffectiveSettings;
 import net.minecraft.ChatFormatting;
 import net.minecraft.SharedConstants;
 import net.minecraft.util.Util;
@@ -612,12 +614,18 @@ public class Iris {
 		System.out.printf("Reloaded shaders in %.2f ms%n", elapsed / 1_000_000.0);
 	}
 
-	public static ReloadResult reloadVibrisShaderpack() {
+	public static ReloadResult reloadVibrisShaderpack(Map<String, String> requestOverrides) {
 		SHADER_DEBUG_CONTROL.clearErrors();
 		ShaderPack previousPack = currentPack;
 		String previousPackName = currentPackName;
 		boolean previousFallback = fallback;
 		FileSystem previousZipFileSystem = zipFileSystem;
+		EffectiveShaderSettings previousSettings = previousPack == null
+			? EffectiveShaderSettings.empty()
+			: IrisVibrisEffectiveSettings.capture(previousPack, Map.of(), Map.of());
+		Map<String, String> preservedValues = requestOverrides == null && "vibris".equals(previousPackName)
+			? previousSettings.values()
+			: Map.of();
 		NamespacedId dimension = Minecraft.getInstance().level == null ? DimensionId.OVERWORLD : getCurrentDimension();
 
 		boolean loaded = loadExternalShaderpack("vibris");
@@ -645,7 +653,11 @@ public class Iris {
 			getPipelineManager().installPipeline(dimension, replacement);
 			closeShaderpackFileSystem(previousZipFileSystem);
 			zipFileSystem = null;
-			return ReloadResult.success(diagnostics);
+			EffectiveShaderSettings effectiveSettings = IrisVibrisEffectiveSettings.capture(
+				currentPack,
+				preservedValues,
+				requestOverrides == null ? Map.of() : requestOverrides);
+			return ReloadResult.success(effectiveSettings, diagnostics);
 		}
 
 		currentPack = previousPack;
@@ -667,7 +679,7 @@ public class Iris {
 				"The fixed Vibris shaderpack did not produce an active Iris pipeline."));
 		}
 		return restored
-			? ReloadResult.failurePreservingActiveState(diagnostics)
+			? ReloadResult.failurePreservingActiveState(previousSettings, diagnostics)
 			: ReloadResult.failure(diagnostics);
 	}
 
