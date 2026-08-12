@@ -10,6 +10,7 @@ import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
+import dev.vibris.api.RuntimeEnvironment;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
@@ -136,6 +137,11 @@ class IrisCaptureTest {
 		}
 
 		@Override
+		public RuntimeEnvironment runtimeEnvironment() {
+			return environment();
+		}
+
+		@Override
 		public RuntimeStatus status() {
 			return new RuntimeStatus(true, "save", "minecraft:overworld", "source");
 		}
@@ -231,5 +237,11 @@ class IrisCaptureTest {
 		@Override
 		public void close() {
 		}
+	}
+
+	private static RuntimeEnvironment environment() {
+		return new RuntimeEnvironment(
+			"test-minecraft", "test-iris", "test-vibris", "test-java", "test-os",
+			"test-vendor", "test-renderer", "test-opengl", "test-driver");
 	}
 }

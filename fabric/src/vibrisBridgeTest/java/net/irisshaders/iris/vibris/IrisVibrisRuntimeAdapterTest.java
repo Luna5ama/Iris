@@ -9,6 +9,7 @@ import dev.vibris.api.ContextApplyResult;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
+import dev.vibris.api.RuntimeEnvironment;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
@@ -71,6 +72,20 @@ class IrisVibrisRuntimeAdapterTest {
 		assertThrows(CancellationException.class, () -> wait.get(1, TimeUnit.SECONDS));
 	}
 
+	@Test
+	void runtimeEnvironmentIsQueriedOnClientThread() {
+		ControlledHost host = new ControlledHost();
+		ThreadBoundVibrisRuntimeAdapter adapter = new ThreadBoundVibrisRuntimeAdapter(
+			host, new RenderedFrameClock());
+
+		var environment = adapter.getRuntimeEnvironment().toCompletableFuture();
+		assertFalse(environment.isDone());
+		host.runClientTasks();
+
+		assertEquals("1.21.11", environment.join().minecraftVersion());
+		assertTrue(host.clientThreadCalls > 0);
+	}
+
 	private static final class ControlledHost implements VibrisRuntimeHost {
 		private final Queue<Runnable> clientTasks = new ArrayDeque<>();
 		private SceneContext appliedContext;
@@ -85,6 +100,14 @@ class IrisVibrisRuntimeAdapterTest {
 		@Override
 		public void executeOnClient(Runnable task) {
 			clientTasks.add(task);
+		}
+
+		@Override
+		public RuntimeEnvironment runtimeEnvironment() {
+			requireClientThread();
+			return new RuntimeEnvironment(
+				"1.21.11", "iris-test", "vibris-test", "21.0.8", "Windows x86_64",
+				"NVIDIA Corporation", "NVIDIA GeForce RTX", "4.6.0", "4.6.0 NVIDIA");
 		}
 
 		@Override

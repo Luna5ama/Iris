@@ -40,6 +40,7 @@ buildConfig {
     buildConfigField("IS_SHARED_BETA", false)
     buildConfigField("BETA_TAG", "")
     buildConfigField("BETA_VERSION", 0)
+    buildConfigField("VIBRIS_VERSION", "0.0.1-SNAPSHOT")
 
     sourceSets.getByName("desktop") {
         buildConfigField("IS_SHARED_BETA", false)

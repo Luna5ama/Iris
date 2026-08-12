@@ -1,5 +1,7 @@
 package net.irisshaders.iris.vibris;
 
+import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.blaze3d.systems.RenderSystem;
 import dev.luna5ama.vibris.capture.CaptureActionExecutor;
 import dev.luna5ama.vibris.capture.VibrisPresetCatalog;
 import dev.vibris.api.CancellationToken;
@@ -12,19 +14,23 @@ import dev.vibris.api.ContextValidationResult;
 import dev.vibris.api.RuntimeAction;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
+import dev.vibris.api.RuntimeEnvironment;
 import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.ScenePreset;
 import dev.vibris.api.TemporalResetResult;
-import dev.vibris.core.VibrisRuntimeHost;
 import dev.vibris.core.ShaderConfigFile;
+import dev.vibris.core.VibrisRuntimeHost;
+import net.irisshaders.iris.BuildConfig;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.SystemTimeUniforms;
+import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.system.Platform;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -105,6 +111,51 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	public void executeOnClient(Runnable task) {
 		minecraft.execute(task);
 		GLFW.glfwPostEmptyEvent();
+	}
+
+	@Override
+	public RuntimeEnvironment runtimeEnvironment() {
+		if (!isClientThread()) {
+			throw new IllegalStateException("Runtime environment must be queried on the Minecraft client thread");
+		}
+
+		GpuDevice device = RenderSystem.getDevice();
+		String glVersion = device.getVersion();
+		return runtimeEnvironment(
+			SharedConstants.getCurrentVersion().name(),
+			Iris.getVersion(),
+			BuildConfig.VIBRIS_VERSION,
+			Runtime.version().toString(),
+			Platform.get().getName() + " " + Platform.getArchitecture(),
+			device.getVendor(),
+			device.getRenderer(),
+			glVersion,
+			glVersion
+		);
+	}
+
+	static RuntimeEnvironment runtimeEnvironment(
+		String minecraftVersion,
+		String irisVersion,
+		String vibrisVersion,
+		String javaVersion,
+		String operatingSystem,
+		String gpuVendor,
+		String gpuRenderer,
+		String openglVersion,
+		String driverVersion
+	) {
+		return new RuntimeEnvironment(
+			minecraftVersion,
+			irisVersion,
+			vibrisVersion,
+			javaVersion,
+			operatingSystem,
+			gpuVendor,
+			gpuRenderer,
+			openglVersion,
+			driverVersion
+		);
 	}
 
 	@Override
