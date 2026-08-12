@@ -6,6 +6,9 @@ import dev.vibris.api.CapturePlan;
 import dev.vibris.api.CaptureResult;
 import dev.vibris.api.CompileCatalog;
 import dev.vibris.api.ContextApplyResult;
+import dev.vibris.api.DeterministicTemporalCaptureOutcome;
+import dev.vibris.api.DeterministicTemporalCapturePlanner;
+import dev.vibris.api.DeterministicTemporalCaptureRequest;
 import dev.vibris.api.EffectiveShaderSettings;
 import dev.vibris.api.ReloadResult;
 import dev.vibris.api.ResourceCatalog;
@@ -14,6 +17,7 @@ import dev.vibris.api.RuntimeStatus;
 import dev.vibris.api.SceneContext;
 import dev.vibris.api.TemporalResetResult;
 import dev.vibris.core.RenderedFrameClock;
+import dev.vibris.core.DeterministicTemporalCaptureScheduler;
 import dev.vibris.core.ThreadBoundVibrisRuntimeAdapter;
 import dev.vibris.core.VibrisRuntimeHost;
 import org.junit.jupiter.api.Test;
@@ -136,6 +140,19 @@ class IrisVibrisRuntimeAdapterTest {
 		public TemporalResetResult resetTemporal(CancellationToken cancellation) {
 			requireClientThread();
 			return new TemporalResetResult(true);
+		}
+
+		@Override
+		public CompletableFuture<DeterministicTemporalCaptureOutcome> captureDeterministicTemporalPhase(
+			DeterministicTemporalCaptureRequest request,
+			DeterministicTemporalCapturePlanner planner,
+			ArtifactSink sink,
+			DeterministicTemporalCaptureScheduler scheduler,
+			CancellationToken cancellation
+		) {
+			requireClientThread();
+			return CompletableFuture.failedFuture(
+				new UnsupportedOperationException("No deterministic capture phase in this runtime fixture"));
 		}
 
 		@Override

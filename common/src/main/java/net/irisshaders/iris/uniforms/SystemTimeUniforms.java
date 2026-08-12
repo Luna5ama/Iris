@@ -12,8 +12,12 @@ import java.util.function.IntSupplier;
  * @see <a href="https://github.com/IrisShaders/ShaderDoc/blob/master/uniforms.md#system-time">Uniforms: System time</a>
  */
 public final class SystemTimeUniforms {
+	private static final float DETERMINISTIC_FRAME_TIME_SECONDS = 1.0F / 60.0F;
+
 	public static final Timer TIMER = new Timer();
 	public static final FrameCounter COUNTER = new FrameCounter();
+
+	private static DeterministicTimeScope deterministicTimeScope;
 
 	private SystemTimeUniforms() {
 	}
@@ -28,6 +32,60 @@ public final class SystemTimeUniforms {
 			.uniform1i(UniformUpdateFrequency.PER_FRAME, "frameCounter", COUNTER)
 			.uniform1f(UniformUpdateFrequency.PER_FRAME, "frameTime", TIMER::getLastFrameTime)
 			.uniform1f(UniformUpdateFrequency.PER_FRAME, "frameTimeCounter", TIMER::getFrameTimeCounter);
+	}
+
+	/**
+	 * Advances all shader-visible system time values for one rendered frame.
+	 *
+	 * @param realNanos the real monotonic time at the start of the frame
+	 */
+	public static synchronized void beginFrame(long realNanos) {
+		COUNTER.beginFrame();
+		if (deterministicTimeScope == null) {
+			TIMER.beginRealFrame(realNanos);
+		} else {
+			TIMER.beginDeterministicFrame();
+		}
+	}
+
+	/**
+	 * Starts a non-nestable deterministic shader-time scope at a fresh temporal origin.
+	 */
+	public static synchronized DeterministicTimeScope beginDeterministicTime() {
+		if (deterministicTimeScope != null) {
+			throw new IllegalStateException("Deterministic shader time is already active");
+		}
+
+		DeterministicTimeScope scope = new DeterministicTimeScope();
+		deterministicTimeScope = scope;
+		COUNTER.reset();
+		TIMER.reset();
+		return scope;
+	}
+
+	private static synchronized void endDeterministicTime(DeterministicTimeScope scope) {
+		if (scope.closed) {
+			return;
+		}
+		if (deterministicTimeScope != scope) {
+			throw new IllegalStateException("Deterministic shader time scope is not active");
+		}
+
+		deterministicTimeScope = null;
+		scope.closed = true;
+		TIMER.reset();
+	}
+
+	public static final class DeterministicTimeScope implements AutoCloseable {
+		private boolean closed;
+
+		private DeterministicTimeScope() {
+		}
+
+		@Override
+		public void close() {
+			endDeterministicTime(this);
+		}
 	}
 
 	/**
@@ -46,7 +104,7 @@ public final class SystemTimeUniforms {
 			return count;
 		}
 
-		public void beginFrame() {
+		private void beginFrame() {
 			count = (count + 1) % 720720;
 		}
 
@@ -71,7 +129,7 @@ public final class SystemTimeUniforms {
 			reset();
 		}
 
-		public void beginFrame(long frameStartTime) {
+		private void beginRealFrame(long frameStartTime) {
 			// Track how much time passed since the last time we began rendering a frame.
 			// If this is the first frame, then use a value of 0.
 			long diffNs = frameStartTime - lastStartTime.orElse(frameStartTime);
@@ -79,9 +137,18 @@ public final class SystemTimeUniforms {
 			long diffMs = (diffNs / 1000) / 1000;
 
 			// Convert to seconds with a resolution of 1 millisecond, and store as the time taken for the last frame to complete.
-			lastFrameTime = diffMs / 1000.0F;
+			advance(diffMs / 1000.0F);
 
-			// Advance the current frameTimeCounter by the amount of time the last frame took.
+			// Finally, update the "last start time" value.
+			lastStartTime = OptionalLong.of(frameStartTime);
+		}
+
+		private void beginDeterministicFrame() {
+			advance(DETERMINISTIC_FRAME_TIME_SECONDS);
+		}
+
+		private void advance(float elapsedSeconds) {
+			lastFrameTime = elapsedSeconds;
 			frameTimeCounter += lastFrameTime;
 
 			// Prevent the frameTimeCounter from getting too large, since that causes issues with some shaderpacks
@@ -89,9 +156,6 @@ public final class SystemTimeUniforms {
 			if (frameTimeCounter >= 3600.0F) {
 				frameTimeCounter = 0.0F;
 			}
-
-			// Finally, update the "last start time" value.
-			lastStartTime = OptionalLong.of(frameStartTime);
 		}
 
 		public float getFrameTimeCounter() {

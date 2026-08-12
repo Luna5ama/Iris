@@ -52,8 +52,7 @@ public class MixinGameRenderer {
 	private void iris$startFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
 		// This allows certain functions like float smoothing to function outside a world.
 		CapturedRenderingState.INSTANCE.setRealTickDelta(deltaTracker.getGameTimeDeltaPartialTick(true));
-		SystemTimeUniforms.COUNTER.beginFrame();
-		SystemTimeUniforms.TIMER.beginFrame(Util.getNanos());
+		SystemTimeUniforms.beginFrame(Util.getNanos());
 	}
 
 	@Inject(method = "render", at = @At("TAIL"))

@@ -1,0 +1,76 @@
+package net.irisshaders.iris.uniforms;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class SystemTimeUniformsTest {
+	private static final float FIXED_FRAME_TIME = 1.0F / 60.0F;
+
+	private SystemTimeUniforms.DeterministicTimeScope activeScope;
+
+	@AfterEach
+	void resetGlobals() {
+		if (activeScope != null) {
+			activeScope.close();
+			activeScope = null;
+		}
+		SystemTimeUniforms.COUNTER.reset();
+		SystemTimeUniforms.TIMER.reset();
+	}
+
+	@Test
+	void deterministicFramesIgnoreRealNanosecondSequence() {
+		List<FrameState> first = deterministicSequence(10L, 40_000_000L, 9_000_000_000L);
+		List<FrameState> second = deterministicSequence(7_000_000_000L, 3L, Long.MAX_VALUE);
+
+		assertEquals(first, second);
+		assertEquals(new FrameState(1, FIXED_FRAME_TIME, FIXED_FRAME_TIME), first.getFirst());
+		assertEquals(new FrameState(3, FIXED_FRAME_TIME, FIXED_FRAME_TIME * 3.0F), first.getLast());
+	}
+
+	@Test
+	void scopeIsNonNestableAndCloseRestoresRealTimeWithoutResettingFrameCounter() {
+		activeScope = SystemTimeUniforms.beginDeterministicTime();
+		SystemTimeUniforms.beginFrame(123L);
+		assertThrows(IllegalStateException.class, SystemTimeUniforms::beginDeterministicTime);
+
+		SystemTimeUniforms.DeterministicTimeScope closedScope = activeScope;
+		activeScope.close();
+		activeScope = null;
+		closedScope.close();
+
+		SystemTimeUniforms.beginFrame(5_000_000_000L);
+		assertEquals(new FrameState(2, 0.0F, 0.0F), currentState());
+		SystemTimeUniforms.beginFrame(5_025_000_000L);
+		assertEquals(new FrameState(3, 0.025F, 0.025F), currentState());
+	}
+
+	private List<FrameState> deterministicSequence(long... realNanos) {
+		activeScope = SystemTimeUniforms.beginDeterministicTime();
+		List<FrameState> states = new ArrayList<>();
+		for (long realNano : realNanos) {
+			SystemTimeUniforms.beginFrame(realNano);
+			states.add(currentState());
+		}
+		activeScope.close();
+		activeScope = null;
+		return states;
+	}
+
+	private FrameState currentState() {
+		return new FrameState(
+			SystemTimeUniforms.COUNTER.getAsInt(),
+			SystemTimeUniforms.TIMER.getLastFrameTime(),
+			SystemTimeUniforms.TIMER.getFrameTimeCounter()
+		);
+	}
+
+	private record FrameState(int frameCounter, float frameTime, float frameTimeCounter) {
+	}
+}
