@@ -42,6 +42,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final Path shaderConfigTarget;
 	private volatile Path shaderConfigScratch;
 	private volatile SceneContext activeContext;
+	private volatile boolean closed;
 
 	public MinecraftVibrisRuntimeHost(Path gameDirectory) throws IOException {
 		minecraft = Minecraft.getInstance();
@@ -110,7 +111,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	public RuntimeStatus status() {
 		SceneContext context = activeContext;
 		return new RuntimeStatus(
-			minecraft.level != null && minecraft.player != null && minecraft.getSingleplayerServer() != null,
+			!closed,
 			context == null ? "" : context.saveId(),
 			minecraft.level == null ? "" : minecraft.level.dimension().identifier().toString(),
 			"");
@@ -207,6 +208,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	@Override
 	public void close() {
+		closed = true;
 		if ("vibris".equals(Iris.getCurrentPackName()) &&
 			Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline) {
 			Iris.getPipelineManager().destroyPipeline();
