@@ -105,7 +105,7 @@ public class ShadowCompositeRenderer {
 			ImmutableSet<Integer> flippedAtLeastOnceSnapshot = flippedAtLeastOnce.build();
 
 			if (source == null || !source.isValid()) {
-				if (computes.length > 0 && computes[i] != null) {
+				if (computes.length > 0 && computes[i] != null && computes[i].length > 0) {
 					ComputeOnlyPass pass = new ComputeOnlyPass();
 					pass.name = Arrays.stream(computes[i]).filter(Objects::nonNull).findFirst()
 						.map(ComputeSource::getName).orElse("unknown");
