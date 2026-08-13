@@ -35,6 +35,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -47,18 +48,27 @@ public class MixinGameRenderer {
 	@Shadow
 	@Final
 	private Minecraft minecraft;
+	@Unique
+	private boolean iris$renderedWorldThisCall;
+
+	@ModifyVariable(method = "render", at = @At("HEAD"), argsOnly = true)
+	private DeltaTracker iris$useDeterministicDeltaTracker(DeltaTracker deltaTracker) {
+		return SystemTimeUniforms.resolveDeltaTracker(deltaTracker);
+	}
 
 	@Inject(method = "render", at = @At("HEAD"))
 	private void iris$startFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
+		iris$renderedWorldThisCall = false;
 		// This allows certain functions like float smoothing to function outside a world.
-		CapturedRenderingState.INSTANCE.setRealTickDelta(deltaTracker.getGameTimeDeltaPartialTick(true));
+		CapturedRenderingState.INSTANCE.setRealTickDelta(SystemTimeUniforms.resolveTickDelta(
+			deltaTracker.getGameTimeDeltaPartialTick(true)));
 		SystemTimeUniforms.beginFrame(Util.getNanos());
 	}
 
 	@Inject(method = "render", at = @At("TAIL"))
 	private void iris$finishFrame(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
 		Iris.getShaderDebugControl().tickFrame();
-		IrisVibrisLifecycle.clientFrameTail(this.minecraft.level != null);
+		IrisVibrisLifecycle.clientFrameTail(iris$renderedWorldThisCall);
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))
@@ -90,5 +100,6 @@ public class MixinGameRenderer {
 	@Inject(method = "renderLevel", at = @At("TAIL"))
 	private void iris$runColorSpace(DeltaTracker deltaTracker, CallbackInfo ci) {
 		Iris.getPipelineManager().getPipeline().ifPresent(WorldRenderingPipeline::finalizeGameRendering);
+		iris$renderedWorldThisCall = true;
 	}
 }

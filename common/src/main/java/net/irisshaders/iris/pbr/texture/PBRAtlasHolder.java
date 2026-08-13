@@ -32,4 +32,13 @@ public class PBRAtlasHolder {
 			specularAtlas.cycleAnimationFrames();
 		}
 	}
+
+	public void resetAnimationPhase() {
+		if (normalAtlas != null) {
+			normalAtlas.resetAnimationPhase();
+		}
+		if (specularAtlas != null) {
+			specularAtlas.resetAnimationPhase();
+		}
+	}
 }

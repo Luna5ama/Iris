@@ -156,6 +156,18 @@ class IrisVibrisRuntimeAdapterTest {
 		}
 
 		@Override
+		public void beginDeterministicSequence(CancellationToken cancellation) {
+			requireClientThread();
+			cancellation.throwIfCancellationRequested();
+		}
+
+		@Override
+		public void endDeterministicSequence(CancellationToken cancellation) {
+			requireClientThread();
+			cancellation.throwIfCancellationRequested();
+		}
+
+		@Override
 		public CompileCatalog compileCatalog(CancellationToken cancellation) {
 			requireClientThread();
 			return CompileCatalog.empty(0);

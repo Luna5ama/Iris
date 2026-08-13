@@ -89,6 +89,11 @@ public class GlImage extends GlResource {
 		return getGlId();
 	}
 
+	public void clearContents() {
+		ARBClearTexture.glClearTexImage(
+			getGlId(), 0, format.getGlFormat(), pixelType.getGlFormat(), (int[]) null);
+	}
+
 	/**
 	 * This makes the image aware of a new render target. Depending on the image's properties, it may not follow these targets.
 	 *

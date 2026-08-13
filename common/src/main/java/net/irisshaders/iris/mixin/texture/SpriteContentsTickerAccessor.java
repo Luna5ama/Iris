@@ -19,6 +19,9 @@ public interface SpriteContentsTickerAccessor {
 	@Accessor("subFrame")
 	void setSubFrame(int subFrame);
 
+	@Accessor("isDirty")
+	void setDirty(boolean dirty);
+
 	@Accessor("animationInfo")
 	AnimatedTexture getAnimationInfo();
 }

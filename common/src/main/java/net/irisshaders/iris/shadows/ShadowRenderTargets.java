@@ -210,6 +210,11 @@ public class ShadowRenderTargets {
 		fullClearRequired = false;
 	}
 
+	public void resetTemporalState() {
+		for (int i = 0; i < flipped.length; i++) flipped[i] = false;
+		translucentDepthDirty = true;
+	}
+
 	public GlFramebuffer createFramebufferWritingToMain(int[] drawBuffers) {
 		return createFullFramebuffer(false, drawBuffers);
 	}

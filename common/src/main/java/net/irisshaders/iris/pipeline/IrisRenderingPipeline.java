@@ -94,6 +94,7 @@ import net.irisshaders.iris.targets.backed.NativeImageBackedSingleColorTexture;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
+import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.irisshaders.iris.vibris.IrisVibrisPassCapture;
@@ -1202,7 +1203,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 	@Override
 	public boolean allowConcurrentCompute() {
-		return allowConcurrentCompute;
+		return allowConcurrentCompute && !SystemTimeUniforms.isDeterministicTimeActive();
 	}
 
 	@Override
@@ -1383,6 +1384,43 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 	public Set<GlImage> getCustomImagesForDebug() {
 		return Set.copyOf(customImages);
+	}
+
+	public void resetVibrisTemporalState() {
+		RenderSystem.assertOnRenderThread();
+		if (destroyed) throw new IllegalStateException("Tried to reset a destroyed world rendering pipeline");
+		if (isRenderingWorld) throw new IllegalStateException("Cannot reset temporal state while rendering the world");
+
+		customImages.forEach(GlImage::clearContents);
+		if (shaderStorageBufferHolder != null) shaderStorageBufferHolder.resetBuffers();
+
+		Vector3d fogColor3 = CapturedRenderingState.INSTANCE.getFogColor();
+		Vector4f fogColor = new Vector4f(
+			(float) fogColor3.x, (float) fogColor3.y, (float) fogColor3.z, 1.0F);
+		clearPassesFull.forEach(clearPass -> clearPass.execute(fogColor));
+		renderTargets.onFullClear();
+		renderTargets.resetDepthCopies();
+
+		if (shadowRenderTargets != null) {
+			shadowRenderTargets.resetTemporalState();
+			Vector4f shadowClearColor = new Vector4f(1.0F);
+			shadowClearPassesFull.forEach(clearPass -> clearPass.execute(shadowClearColor));
+			shadowRenderTargets.onFullClear();
+		}
+
+		boolean setupRan = false;
+		for (ComputeProgram program : setup) {
+			if (program == null) continue;
+			setupRan = true;
+			program.use();
+			program.dispatch(1, 1);
+		}
+		if (setupRan) ComputeProgram.unbind();
+		IrisRenderSystem.memoryBarrier(
+			GL43C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
+				GL43C.GL_TEXTURE_FETCH_BARRIER_BIT |
+				GL43C.GL_SHADER_STORAGE_BARRIER_BIT);
+		Minecraft.getInstance().getMainRenderTarget().iris$bindFramebuffer();
 	}
 
 	public ShadowRenderTargets getShadowRenderTargetsForDebug() {

@@ -22,8 +22,10 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,6 +121,43 @@ class MinecraftVibrisRuntimeHostTest {
 		assertEquals(12, outcome.targetFrame());
 		assertEquals(12, outcome.terminalFrame());
 		assertRealTimeRestored();
+	}
+
+	@Test
+	void cleanupFailureAfterSuccessfulCaptureIsTypedAndAttemptedBeforePublishing() {
+		CapturePlan plan = capturePlan();
+		CaptureResult capture = capture(plan, 12);
+		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled = scheduled(1, 10, 12, capture);
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
+		AtomicBoolean cleanupAttempted = new AtomicBoolean();
+		AutoCloseable captureScope = () -> {
+			cleanupAttempted.set(true);
+			throw new IllegalStateException("cleanup failed");
+		};
+
+		MinecraftVibrisRuntimeHost.completeScheduledCapture(
+			result, reloaded(), plan, new TemporalResetResult(true), 2, scheduled, captureScope, capture, null);
+
+		DeterministicTemporalCaptureOutcome.CaptureRejected outcome = assertInstanceOf(
+			DeterministicTemporalCaptureOutcome.CaptureRejected.class, result.join());
+		assertEquals(DeterministicTemporalCaptureOutcome.FailureKind.CLEANUP_FAILED, outcome.failure().kind());
+		assertTrue(cleanupAttempted.get());
+	}
+
+	@Test
+	void preAnchorScopeFailureIsResetRejectedWithoutFrameEvidence() {
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
+		IllegalStateException resetFailure = new IllegalStateException("atlas reset failed");
+		IllegalStateException cleanupFailure = new IllegalStateException("time cleanup failed");
+
+		MinecraftVibrisRuntimeHost.completeResetRejected(
+			result, reloaded(), capturePlan(), resetFailure, cleanupFailure);
+
+		DeterministicTemporalCaptureOutcome.ResetRejected outcome = assertInstanceOf(
+			DeterministicTemporalCaptureOutcome.ResetRejected.class, result.join());
+		assertFalse(outcome.reset().successful());
+		assertEquals(DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED, outcome.failure().kind());
+		assertEquals(List.of(cleanupFailure), List.of(resetFailure.getSuppressed()));
 	}
 
 	@Test

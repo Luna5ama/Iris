@@ -2,6 +2,7 @@ package net.irisshaders.iris.uniforms;
 
 import net.irisshaders.iris.gl.uniform.UniformHolder;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
+import net.minecraft.client.DeltaTracker;
 
 import java.util.OptionalLong;
 import java.util.function.IntSupplier;
@@ -61,6 +62,28 @@ public final class SystemTimeUniforms {
 		COUNTER.reset();
 		TIMER.reset();
 		return scope;
+	}
+
+	public static synchronized boolean isDeterministicTimeActive() {
+		return deterministicTimeScope != null;
+	}
+
+	/**
+	 * Resolves a Minecraft render partial tick against the active deterministic capture phase.
+	 *
+	 * <p>Minecraft uses a partial tick of {@code 1.0} while its game clock is frozen. Using the
+	 * same value here keeps shader-visible celestial and interpolation state fixed throughout a
+	 * deterministic capture without changing ordinary rendering.</p>
+	 */
+	public static synchronized float resolveTickDelta(float realTickDelta) {
+		return deterministicTimeScope == null ? realTickDelta : 1.0F;
+	}
+
+	/**
+	 * Uses Minecraft's fixed full-tick render state while deterministic capture is active.
+	 */
+	public static synchronized DeltaTracker resolveDeltaTracker(DeltaTracker realDeltaTracker) {
+		return deterministicTimeScope == null ? realDeltaTracker : DeltaTracker.ONE;
 	}
 
 	private static synchronized void endDeterministicTime(DeterministicTimeScope scope) {

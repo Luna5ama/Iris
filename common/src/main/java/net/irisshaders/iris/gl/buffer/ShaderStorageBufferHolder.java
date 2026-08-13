@@ -86,6 +86,16 @@ public class ShaderStorageBufferHolder {
 		}
 	}
 
+	public void resetBuffers() {
+		if (destroyed) {
+			throw new IllegalStateException("Tried to reset destroyed buffer objects");
+		}
+		for (ShaderStorageBuffer buffer : buffers) {
+			if (buffer != null) buffer.resetContents();
+		}
+		GlStateManager._glBindBuffer(GL43C.GL_SHADER_STORAGE_BUFFER, 0);
+	}
+
 	public int getBufferIndex(int index) {
 		if (buffers.length < index || buffers[index] == null)
 			throw new RuntimeException("Tried to query a buffer for indirect dispatch that doesn't exist!");

@@ -308,6 +308,38 @@ public class PBRAtlasTexture extends AbstractTexture implements PBRDumpable {
 		}
 	}
 
+	public void resetAnimationPhase() {
+		if (this.texture == null) {
+			throw new IllegalStateException("PBR atlas texture is not initialized: " + this.location);
+		}
+
+		resetAndDrawAnimationStates(this.location, this.animatedTexturesStates, this.mipViews, this.maxMipLevel);
+	}
+
+	public static void resetAndDrawAnimationStates(
+		Identifier location,
+		List<SpriteContents.AnimationState> animationStates,
+		GpuTextureView[] mipViews,
+		int maxMipLevel
+	) {
+		for (SpriteContents.AnimationState animationState : animationStates) {
+			SpriteContentsTickerAccessor accessor = (SpriteContentsTickerAccessor) animationState;
+			accessor.setFrame(0);
+			accessor.setSubFrame(0);
+			accessor.setDirty(true);
+		}
+
+		for (int level = 0; level <= maxMipLevel; level++) {
+			try (RenderPass renderPass = RenderSystem.getDevice()
+				.createCommandEncoder()
+				.createRenderPass(() -> "Reset animated texture " + location, mipViews[level], OptionalInt.empty())) {
+				for (SpriteContents.AnimationState animationState : animationStates) {
+					animationState.drawToAtlas(renderPass, animationState.getDrawUbo(level));
+				}
+			}
+		}
+	}
+
 	@Override
 	public void close() {
 		PBRAtlasHolder pbrHolder = ((TextureAtlasExtension) atlasTexture).getPBRHolder();

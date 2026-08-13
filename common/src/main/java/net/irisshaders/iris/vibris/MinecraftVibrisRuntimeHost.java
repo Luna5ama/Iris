@@ -49,6 +49,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private final Minecraft minecraft;
@@ -61,6 +62,8 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	private volatile Path shaderConfigScratch;
 	private volatile SceneContext activeContext;
 	private volatile boolean closed;
+	private boolean deterministicSequence;
+	private DeterministicWorldSimulation.Scope deterministicSimulation;
 
 	public MinecraftVibrisRuntimeHost(Path gameDirectory) throws IOException {
 		minecraft = Minecraft.getInstance();
@@ -75,6 +78,10 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 
 	void configureShaderConfigScratch(Path pendingRoot) {
 		shaderConfigScratch = pendingRoot.resolveSibling("config").resolve("vibris.txt");
+	}
+
+	void renderedFrameTail(long frameId) {
+		contexts.renderedFrameTail(frameId);
 	}
 
 	@Override
@@ -197,6 +204,26 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	@Override
+	public void beginDeterministicSequence(CancellationToken cancellation) {
+		cancellation.throwIfCancellationRequested();
+		if (deterministicSequence) {
+			throw new IllegalStateException("A deterministic runtime sequence is already active");
+		}
+		deterministicSequence = true;
+	}
+
+	@Override
+	public void endDeterministicSequence(CancellationToken cancellation) {
+		cancellation.throwIfCancellationRequested();
+		Throwable failure = deterministicSimulation == null ? null : closeCaptureScope(deterministicSimulation);
+		deterministicSimulation = null;
+		deterministicSequence = false;
+		if (failure instanceof RuntimeException runtime) throw runtime;
+		if (failure instanceof Error error) throw error;
+		if (failure != null) throw new IllegalStateException("Failed to restore world simulation", failure);
+	}
+
+	@Override
 	public ReloadResult reload(Map<String, String> config, CancellationToken cancellation) {
 		cancellation.throwIfCancellationRequested();
 		minecraft.setScreen(null);
@@ -229,6 +256,10 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		SystemTimeUniforms.COUNTER.reset();
 		SystemTimeUniforms.TIMER.reset();
 		CapturedRenderingState.INSTANCE.resetTextureReloadCount();
+		if (!(Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline pipeline)) {
+			throw new IllegalStateException("The active Iris rendering pipeline is unavailable");
+		}
+		pipeline.resetVibrisTemporalState();
 		IrisVibrisAutomation.temporalReset();
 		return new TemporalResetResult(true);
 	}
@@ -242,46 +273,144 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		CancellationToken cancellation
 	) {
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
-		CompletionStage<ContextApplyResult> contextStage;
+		MinecraftContextController.ContextOperation contextOperation;
 		try {
-			contextStage = applyContext(request.context(), cancellation);
+			boolean retainedContext = deterministicSequence && request.context().equals(activeContext);
+			contextOperation = retainedContext ?
+				contexts.beginCurrent(request.context(), cancellation) :
+				contexts.begin(request.context(), cancellation);
 		} catch (Throwable failure) {
 			result.complete(contextRejected(request, failure));
 			return result;
 		}
 
-		contextStage.whenComplete((context, contextFailure) -> runOnClient(result, () -> {
-			if (result.isDone()) return;
+		contextOperation.preparation().whenComplete((context, contextFailure) -> runOnClient(result, () -> {
+			if (result.isDone()) {
+				contexts.release(contextOperation);
+				return;
+			}
 			if (contextFailure != null) {
+				contexts.release(contextOperation);
 				result.complete(contextRejected(request, unwrap(contextFailure)));
 				return;
 			}
 			if (!context.successful()) {
+				contexts.release(contextOperation);
 				result.complete(new DeterministicTemporalCaptureOutcome.ContextRejected(
 					context,
 					failure(DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED, context.message())
 				));
 				return;
 			}
-			startDeterministicTemporalPhase(request, planner, sink, scheduler, cancellation, context, result);
-		}));
+			primeDeterministicTemporalPhase(
+				request, planner, sink, scheduler, cancellation, contextOperation, context, result);
+		}, () -> contexts.release(contextOperation)));
 		return result;
 	}
 
-	private void startDeterministicTemporalPhase(
+	private void primeDeterministicTemporalPhase(
 		DeterministicTemporalCaptureRequest request,
 		DeterministicTemporalCapturePlanner planner,
 		ArtifactSink sink,
 		DeterministicTemporalCaptureScheduler scheduler,
 		CancellationToken cancellation,
+		MinecraftContextController.ContextOperation contextOperation,
 		ContextApplyResult context,
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result
 	) {
-		if (result.isDone()) return;
+		if (result.isDone()) {
+			contexts.release(contextOperation);
+			return;
+		}
+		try {
+			if (!deterministicSequence) {
+				throw new IllegalStateException("A deterministic runtime sequence is required");
+			}
+			if (deterministicSimulation == null) {
+				deterministicSimulation = DeterministicWorldSimulation.begin(minecraft, cancellation);
+			}
+		} catch (Throwable failure) {
+			contexts.release(contextOperation);
+			result.complete(contextRejected(request, unwrap(failure)));
+			return;
+		}
+
+		ReloadResult primeReload;
+		try {
+			primeReload = reload(request.preserveCurrentSettings() ? null : request.settings(), cancellation);
+		} catch (Throwable failure) {
+			contexts.release(contextOperation);
+			Throwable cause = unwrap(failure);
+			ReloadResult rejected = ReloadResult.failure(List.of(new ReloadResult.Diagnostic(
+				ReloadResult.Severity.ERROR, "shaderpack", 0, failureMessage(cause))));
+			result.complete(new DeterministicTemporalCaptureOutcome.ReloadRejected(
+				context, rejected, failure(cause, false)));
+			return;
+		}
+		if (!primeReload.successful()) {
+			contexts.release(contextOperation);
+			String message = primeReload.diagnostics().stream()
+				.map(ReloadResult.Diagnostic::message)
+				.filter(candidate -> candidate != null && !candidate.isBlank())
+				.findFirst()
+				.orElse("Shader reload was rejected");
+			result.complete(new DeterministicTemporalCaptureOutcome.ReloadRejected(
+				context,
+				primeReload,
+				failure(DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED, message)
+			));
+			return;
+		}
+
+		CompletionStage<ContextApplyResult> sceneReady;
+		try {
+			sceneReady = contexts.awaitSceneReady(contextOperation);
+		} catch (Throwable failure) {
+			contexts.release(contextOperation);
+			result.complete(contextRejected(request, unwrap(failure)));
+			return;
+		}
+		sceneReady.whenComplete((readyContext, sceneFailure) -> runOnClient(result, () -> {
+			if (result.isDone()) {
+				contexts.release(contextOperation);
+				return;
+			}
+			if (sceneFailure != null) {
+				contexts.release(contextOperation);
+				result.complete(contextRejected(request, unwrap(sceneFailure)));
+				return;
+			}
+			if (!readyContext.successful()) {
+				contexts.release(contextOperation);
+				result.complete(new DeterministicTemporalCaptureOutcome.ContextRejected(
+					readyContext,
+					failure(DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED, readyContext.message())
+				));
+				return;
+			}
+			finishDeterministicTemporalReload(
+				request, planner, sink, scheduler, cancellation, contextOperation, readyContext, primeReload, result);
+		}, () -> contexts.release(contextOperation)));
+	}
+
+	private void finishDeterministicTemporalReload(
+		DeterministicTemporalCaptureRequest request,
+		DeterministicTemporalCapturePlanner planner,
+		ArtifactSink sink,
+		DeterministicTemporalCaptureScheduler scheduler,
+		CancellationToken cancellation,
+		MinecraftContextController.ContextOperation contextOperation,
+		ContextApplyResult context,
+		ReloadResult primeReload,
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result
+	) {
 		ReloadResult reload;
 		try {
+			cancellation.throwIfCancellationRequested();
 			reload = reload(request.preserveCurrentSettings() ? null : request.settings(), cancellation);
+			cancellation.throwIfCancellationRequested();
 		} catch (Throwable failure) {
+			contexts.release(contextOperation);
 			Throwable cause = unwrap(failure);
 			ReloadResult rejected = ReloadResult.failure(List.of(new ReloadResult.Diagnostic(
 				ReloadResult.Severity.ERROR, "shaderpack", 0, failureMessage(cause))));
@@ -290,11 +419,12 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			return;
 		}
 		if (!reload.successful()) {
+			contexts.release(contextOperation);
 			String message = reload.diagnostics().stream()
 				.map(ReloadResult.Diagnostic::message)
 				.filter(candidate -> candidate != null && !candidate.isBlank())
 				.findFirst()
-				.orElse("Shader reload was rejected");
+				.orElse("Final shader reload was rejected");
 			result.complete(new DeterministicTemporalCaptureOutcome.ReloadRejected(
 				context,
 				reload,
@@ -302,6 +432,117 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			));
 			return;
 		}
+		if (!primeReload.effectiveSettings().hasSameResolvedState(reload.effectiveSettings())) {
+			contexts.release(contextOperation);
+			ReloadResult rejected = ReloadResult.failure(List.of(new ReloadResult.Diagnostic(
+				ReloadResult.Severity.ERROR,
+				"shaderpack",
+				0,
+				"Effective shader settings changed between the prime and final reloads")));
+			result.complete(new DeterministicTemporalCaptureOutcome.ReloadRejected(
+				context,
+				rejected,
+				failure(
+					DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED,
+					"Effective shader settings changed between the prime and final reloads")
+			));
+			return;
+		}
+
+		contexts.release(contextOperation);
+		activeContext = context.context();
+		awaitFinalReloadSceneReady(
+			request, planner, sink, scheduler, cancellation, context, reload, result);
+	}
+
+	private void awaitFinalReloadSceneReady(
+		DeterministicTemporalCaptureRequest request,
+		DeterministicTemporalCapturePlanner planner,
+		ArtifactSink sink,
+		DeterministicTemporalCaptureScheduler scheduler,
+		CancellationToken cancellation,
+		ContextApplyResult context,
+		ReloadResult reload,
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result
+	) {
+		MinecraftContextController.ContextOperation finalSceneOperation;
+		try {
+			finalSceneOperation = contexts.beginCurrent(context.context(), cancellation);
+		} catch (Throwable failure) {
+			result.complete(contextRejected(request, unwrap(failure)));
+			return;
+		}
+
+		finalSceneOperation.preparation().whenComplete((preparedContext, preparationFailure) ->
+			runOnClient(result, () -> {
+				if (result.isDone()) {
+					contexts.release(finalSceneOperation);
+					return;
+				}
+				if (preparationFailure != null) {
+					contexts.release(finalSceneOperation);
+					result.complete(contextRejected(request, unwrap(preparationFailure)));
+					return;
+				}
+				if (!preparedContext.successful()) {
+					contexts.release(finalSceneOperation);
+					result.complete(new DeterministicTemporalCaptureOutcome.ContextRejected(
+						preparedContext,
+						failure(
+							DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED,
+							preparedContext.message())
+					));
+					return;
+				}
+
+				CompletionStage<ContextApplyResult> finalSceneReady;
+				try {
+					finalSceneReady = contexts.awaitSceneReady(finalSceneOperation);
+				} catch (Throwable failure) {
+					contexts.release(finalSceneOperation);
+					result.complete(contextRejected(request, unwrap(failure)));
+					return;
+				}
+				finalSceneReady.whenComplete((readyContext, sceneFailure) ->
+					runOnClient(result, () -> {
+						contexts.release(finalSceneOperation);
+						if (result.isDone()) {
+							return;
+						}
+						if (sceneFailure != null) {
+							result.complete(contextRejected(request, unwrap(sceneFailure)));
+							return;
+						}
+						if (!readyContext.successful()) {
+							result.complete(new DeterministicTemporalCaptureOutcome.ContextRejected(
+								readyContext,
+								failure(
+									DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED,
+									readyContext.message())
+							));
+							return;
+						}
+						IrisVibrisAutomation.contextApplied(readyContext.context(), minecraft);
+						startDeterministicTemporalPhaseAfterReload(
+							request, planner, sink, scheduler, cancellation, readyContext, reload, result);
+					}, () -> {
+						contexts.release(finalSceneOperation);
+					}));
+			}, () -> {
+				contexts.release(finalSceneOperation);
+			}));
+	}
+
+	private void startDeterministicTemporalPhaseAfterReload(
+		DeterministicTemporalCaptureRequest request,
+		DeterministicTemporalCapturePlanner planner,
+		ArtifactSink sink,
+		DeterministicTemporalCaptureScheduler scheduler,
+		CancellationToken cancellation,
+		ContextApplyResult context,
+		ReloadResult reload,
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result
+	) {
 
 		long reloadCompletedAtUnixMs = currentUnixMs();
 		ResourceCatalog resources;
@@ -336,22 +577,32 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		try {
 			reset = resetTemporal(cancellation);
 		} catch (Throwable failure) {
-			result.complete(new DeterministicTemporalCaptureOutcome.ResetRejected(
-				reloaded, plan, new TemporalResetResult(false), failure(unwrap(failure), false)));
+			completeResetRejected(result, reloaded, plan, unwrap(failure), null);
 			return;
 		}
 		if (!reset.successful()) {
-			result.complete(new DeterministicTemporalCaptureOutcome.ResetRejected(
+			completeResetRejected(
+				result,
 				reloaded,
 				plan,
-				reset,
-				failure(DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED,
-					"Temporal reset was rejected")
-			));
+				new IllegalStateException("Temporal reset was rejected"),
+				null);
 			return;
 		}
-
+		SystemTimeUniforms.DeterministicTimeScope timeScope = null;
+		DeterministicParticleAnimation.Scope particleScope;
+		try {
+			timeScope = SystemTimeUniforms.beginDeterministicTime();
+			DeterministicTextureAnimation.resetAll(minecraft);
+			particleScope = DeterministicParticleAnimation.begin(minecraft);
+		} catch (Throwable failure) {
+			Throwable cleanupFailure = closeCaptureScope(timeScope);
+			completeResetRejected(result, reloaded, plan, unwrap(failure), cleanupFailure);
+			return;
+		}
+		CaptureScopes captureScopes = new CaptureScopes(particleScope, timeScope);
 		long resetCompletedAtUnixMs = currentUnixMs();
+
 		long anchorFrame;
 		long warmupEndFrame;
 		long captureFrame;
@@ -360,17 +611,10 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			warmupEndFrame = Math.addExact(anchorFrame, request.warmupFrames());
 			captureFrame = Math.incrementExact(warmupEndFrame);
 		} catch (Throwable failure) {
-			result.completeExceptionally(unwrap(failure));
-			return;
-		}
-
-		SystemTimeUniforms.DeterministicTimeScope timeScope;
-		try {
-			timeScope = SystemTimeUniforms.beginDeterministicTime();
-		} catch (Throwable failure) {
-			completeRejectedBeforeSchedule(
-				result, reloaded, plan, reset, resetCompletedAtUnixMs, request.warmupFrames(),
-				anchorFrame, warmupEndFrame, captureFrame, unwrap(failure), null);
+			Throwable cause = unwrap(failure);
+			Throwable cleanupFailure = closeCaptureScope(captureScopes);
+			if (cleanupFailure != null) cause.addSuppressed(cleanupFailure);
+			result.completeExceptionally(cause);
 			return;
 		}
 
@@ -381,7 +625,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 				cancellation,
 				frameId -> capture(plan, sink, frameId, cancellation));
 		} catch (Throwable failure) {
-			Throwable cleanupFailure = closeTimeScope(timeScope);
+			Throwable cleanupFailure = closeCaptureScope(captureScopes);
 			completeRejectedBeforeSchedule(
 				result, reloaded, plan, reset, resetCompletedAtUnixMs, request.warmupFrames(),
 				anchorFrame, warmupEndFrame, captureFrame, unwrap(failure), cleanupFailure);
@@ -389,18 +633,43 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		}
 
 		scheduled.capture().whenComplete((captured, operationFailure) -> {
-			Runnable finish = () -> completeScheduledCapture(
-				result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled, timeScope,
-				captured, operationFailure == null ? null : unwrap(operationFailure));
+			AtomicBoolean finishStarted = new AtomicBoolean();
+			Throwable capturedFailure = operationFailure == null ? null : unwrap(operationFailure);
+			Runnable finish = () -> completeScheduledCaptureOnce(
+				finishStarted, result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled, captureScopes,
+				captured, capturedFailure);
 			try {
 				if (isClientThread()) finish.run();
 				else executeOnClient(finish);
 			} catch (Throwable submissionFailure) {
-				completeScheduledCapture(
-					result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled, timeScope,
-					captured, operationFailure == null ? unwrap(submissionFailure) : unwrap(operationFailure));
+				Throwable fallbackFailure = capturedFailure == null ? unwrap(submissionFailure) : capturedFailure;
+				Runnable fallback = () -> completeScheduledCaptureOnce(
+					finishStarted, result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled, captureScopes,
+					captured, fallbackFailure);
+				if (isClientThread()) fallback.run();
+				else minecraft.execute(fallback);
 			}
 		});
+	}
+
+	private static void completeScheduledCaptureOnce(
+		AtomicBoolean finishStarted,
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result,
+		DeterministicTemporalCaptureReloaded reloaded,
+		CapturePlan plan,
+		TemporalResetResult reset,
+		long resetCompletedAtUnixMs,
+		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled,
+		AutoCloseable captureScope,
+		CaptureResult captured,
+		Throwable operationFailure
+	) {
+		if (!finishStarted.compareAndSet(false, true)) {
+			return;
+		}
+		completeScheduledCapture(
+			result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled, captureScope,
+			captured, operationFailure);
 	}
 
 	static void completeScheduledCapture(
@@ -410,7 +679,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		TemporalResetResult reset,
 		long resetCompletedAtUnixMs,
 		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled,
-		SystemTimeUniforms.DeterministicTimeScope timeScope,
+		AutoCloseable captureScope,
 		CaptureResult captured,
 		Throwable operationFailure
 	) {
@@ -418,11 +687,13 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		try {
 			terminalFrame = scheduled.terminalFrame().toCompletableFuture().join();
 		} catch (Throwable terminalFailure) {
-			closeTimeScope(timeScope);
-			result.completeExceptionally(unwrap(terminalFailure));
+			Throwable cause = unwrap(terminalFailure);
+			Throwable cleanupFailure = closeCaptureScope(captureScope);
+			if (cleanupFailure != null) cause.addSuppressed(cleanupFailure);
+			result.completeExceptionally(cause);
 			return;
 		}
-		Throwable cleanupFailure = closeTimeScope(timeScope);
+		Throwable cleanupFailure = closeCaptureScope(captureScope);
 		if (operationFailure != null || cleanupFailure != null) {
 			completeRejected(
 				result, reloaded, plan, reset, resetCompletedAtUnixMs, scheduled.warmupFrames(),
@@ -466,6 +737,22 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		completeRejected(
 			result, reloaded, plan, reset, resetCompletedAtUnixMs, warmupFrames,
 			anchorFrame, warmupEndFrame, captureFrame, anchorFrame, operationFailure, cleanupFailure);
+	}
+
+	static void completeResetRejected(
+		CompletableFuture<DeterministicTemporalCaptureOutcome> result,
+		DeterministicTemporalCaptureReloaded reloaded,
+		CapturePlan plan,
+		Throwable operationFailure,
+		Throwable cleanupFailure
+	) {
+		if (cleanupFailure != null) operationFailure.addSuppressed(cleanupFailure);
+		result.complete(new DeterministicTemporalCaptureOutcome.ResetRejected(
+			reloaded,
+			plan,
+			new TemporalResetResult(false),
+			failure(operationFailure, false)
+		));
 	}
 
 	private static void completeRejected(
@@ -523,22 +810,34 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	}
 
 	private void runOnClient(CompletableFuture<?> result, Runnable task) {
+		runOnClient(result, task, () -> {
+		});
+	}
+
+	private void runOnClient(CompletableFuture<?> result, Runnable task, Runnable submissionFailureCleanup) {
 		try {
 			if (isClientThread()) task.run();
 			else executeOnClient(task);
 		} catch (Throwable failure) {
-			result.completeExceptionally(unwrap(failure));
+			Throwable cause = unwrap(failure);
+			try {
+				submissionFailureCleanup.run();
+			} catch (Throwable cleanupFailure) {
+				cause.addSuppressed(unwrap(cleanupFailure));
+			}
+			result.completeExceptionally(cause);
 		}
 	}
 
-	private static Throwable closeTimeScope(SystemTimeUniforms.DeterministicTimeScope timeScope) {
+	private static Throwable closeCaptureScope(AutoCloseable captureScope) {
 		try {
-			timeScope.close();
+			captureScope.close();
 			return null;
 		} catch (Throwable failure) {
 			return unwrap(failure);
 		}
 	}
+
 
 	private static DeterministicTemporalCaptureOutcome.Failure failure(
 		Throwable failure,
@@ -575,6 +874,29 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 			cause = cause.getCause();
 		}
 		return DeterministicTemporalCaptureOutcome.FailureKind.OPERATION_FAILED;
+	}
+
+	private record CaptureScopes(
+		DeterministicParticleAnimation.Scope particles,
+		SystemTimeUniforms.DeterministicTimeScope time
+	) implements AutoCloseable {
+		@Override
+		public void close() throws Exception {
+			Throwable failure = null;
+			try {
+				particles.close();
+			} catch (Throwable particleFailure) {
+				failure = particleFailure;
+			}
+			try {
+				time.close();
+			} catch (Throwable timeFailure) {
+				if (failure == null) failure = timeFailure;
+				else failure.addSuppressed(timeFailure);
+			}
+			if (failure instanceof Exception exception) throw exception;
+			if (failure instanceof Error error) throw error;
+		}
 	}
 
 	private static DeterministicTemporalCaptureOutcome.Failure failure(
@@ -651,6 +973,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	@Override
 	public void close() {
 		closed = true;
+		contexts.close();
 		if ("vibris".equals(Iris.getCurrentPackName()) &&
 			Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline) {
 			Iris.getPipelineManager().destroyPipeline();

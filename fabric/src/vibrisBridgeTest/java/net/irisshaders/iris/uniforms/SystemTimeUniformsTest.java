@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SystemTimeUniformsTest {
 	private static final float FIXED_FRAME_TIME = 1.0F / 60.0F;
@@ -32,6 +34,22 @@ class SystemTimeUniformsTest {
 		assertEquals(first, second);
 		assertEquals(new FrameState(1, FIXED_FRAME_TIME, FIXED_FRAME_TIME), first.getFirst());
 		assertEquals(new FrameState(3, FIXED_FRAME_TIME, FIXED_FRAME_TIME * 3.0F), first.getLast());
+	}
+
+	@Test
+	void deterministicScopePinsPartialTickAndRestoresPassThrough() {
+		assertFalse(SystemTimeUniforms.isDeterministicTimeActive());
+		assertEquals(0.25F, SystemTimeUniforms.resolveTickDelta(0.25F));
+
+		activeScope = SystemTimeUniforms.beginDeterministicTime();
+		assertTrue(SystemTimeUniforms.isDeterministicTimeActive());
+		assertEquals(1.0F, SystemTimeUniforms.resolveTickDelta(0.0F));
+		assertEquals(1.0F, SystemTimeUniforms.resolveTickDelta(0.75F));
+
+		activeScope.close();
+		activeScope = null;
+		assertFalse(SystemTimeUniforms.isDeterministicTimeActive());
+		assertEquals(0.75F, SystemTimeUniforms.resolveTickDelta(0.75F));
 	}
 
 	@Test

@@ -181,6 +181,16 @@ class IrisCaptureTest {
 		}
 
 		@Override
+		public void beginDeterministicSequence(CancellationToken cancellation) {
+			cancellation.throwIfCancellationRequested();
+		}
+
+		@Override
+		public void endDeterministicSequence(CancellationToken cancellation) {
+			cancellation.throwIfCancellationRequested();
+		}
+
+		@Override
 		public CompileCatalog compileCatalog(CancellationToken cancellation) {
 			return CompileCatalog.empty(0);
 		}
