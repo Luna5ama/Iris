@@ -39,25 +39,30 @@ public final class SystemTimeUniforms {
 	 * Advances all shader-visible system time values for one rendered frame.
 	 *
 	 * @param realNanos the real monotonic time at the start of the frame
+	 * @param renderedFrame the number of completed rendered world frames at the start of the frame
 	 */
-	public static synchronized void beginFrame(long realNanos) {
-		COUNTER.beginFrame();
+	public static synchronized void beginFrame(long realNanos, long renderedFrame) {
 		if (deterministicTimeScope == null) {
+			COUNTER.beginFrame();
 			TIMER.beginRealFrame(realNanos);
 		} else {
-			TIMER.beginDeterministicFrame();
+			long deterministicFrame = Math.subtractExact(renderedFrame, deterministicTimeScope.originFrame);
+			COUNTER.setFrame(deterministicFrame);
+			TIMER.beginDeterministicFrame(deterministicFrame);
 		}
 	}
 
 	/**
-	 * Starts a non-nestable deterministic shader-time scope at a fresh temporal origin.
+	 * Starts a non-nestable deterministic shader-time scope anchored to a completed rendered frame.
+	 *
+	 * @param originFrame the completed rendered frame at which the capture phase starts
 	 */
-	public static synchronized DeterministicTimeScope beginDeterministicTime() {
+	public static synchronized DeterministicTimeScope beginDeterministicTime(long originFrame) {
 		if (deterministicTimeScope != null) {
 			throw new IllegalStateException("Deterministic shader time is already active");
 		}
 
-		DeterministicTimeScope scope = new DeterministicTimeScope();
+		DeterministicTimeScope scope = new DeterministicTimeScope(originFrame);
 		deterministicTimeScope = scope;
 		COUNTER.reset();
 		TIMER.reset();
@@ -100,9 +105,11 @@ public final class SystemTimeUniforms {
 	}
 
 	public static final class DeterministicTimeScope implements AutoCloseable {
+		private final long originFrame;
 		private boolean closed;
 
-		private DeterministicTimeScope() {
+		private DeterministicTimeScope(long originFrame) {
+			this.originFrame = originFrame;
 		}
 
 		@Override
@@ -129,6 +136,10 @@ public final class SystemTimeUniforms {
 
 		private void beginFrame() {
 			count = (count + 1) % 720720;
+		}
+
+		private void setFrame(long frame) {
+			count = (int) Math.floorMod(frame, 720720L);
 		}
 
 		public void reset() {
@@ -166,8 +177,11 @@ public final class SystemTimeUniforms {
 			lastStartTime = OptionalLong.of(frameStartTime);
 		}
 
-		private void beginDeterministicFrame() {
-			advance(DETERMINISTIC_FRAME_TIME_SECONDS);
+		private void beginDeterministicFrame(long frame) {
+			lastFrameTime = DETERMINISTIC_FRAME_TIME_SECONDS;
+			long nextFrame = Math.addExact(frame, 1L);
+			long cycleFrame = Math.floorMod(nextFrame, 216000L);
+			frameTimeCounter = cycleFrame * DETERMINISTIC_FRAME_TIME_SECONDS;
 		}
 
 		private void advance(float elapsedSeconds) {

@@ -89,7 +89,7 @@ public final class IrisVibrisLifecycle {
 		IrisVibrisAutomation.clientFrameTail();
 	}
 
-	static long currentFrame() {
+	public static long currentFrame() {
 		RenderedFrameClock current = frames;
 		return current == null ? 0 : current.currentFrame();
 	}

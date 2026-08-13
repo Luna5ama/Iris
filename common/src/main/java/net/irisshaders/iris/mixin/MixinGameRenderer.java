@@ -62,7 +62,7 @@ public class MixinGameRenderer {
 		// This allows certain functions like float smoothing to function outside a world.
 		CapturedRenderingState.INSTANCE.setRealTickDelta(SystemTimeUniforms.resolveTickDelta(
 			deltaTracker.getGameTimeDeltaPartialTick(true)));
-		SystemTimeUniforms.beginFrame(Util.getNanos());
+		SystemTimeUniforms.beginFrame(Util.getNanos(), IrisVibrisLifecycle.currentFrame());
 	}
 
 	@Inject(method = "render", at = @At("TAIL"))

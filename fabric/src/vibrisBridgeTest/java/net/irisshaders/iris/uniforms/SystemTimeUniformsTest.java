@@ -28,12 +28,32 @@ class SystemTimeUniformsTest {
 
 	@Test
 	void deterministicFramesIgnoreRealNanosecondSequence() {
-		List<FrameState> first = deterministicSequence(10L, 40_000_000L, 9_000_000_000L);
-		List<FrameState> second = deterministicSequence(7_000_000_000L, 3L, Long.MAX_VALUE);
+		List<FrameState> first = deterministicSequence(
+			100L,
+			new long[] {10L, 40_000_000L, 9_000_000_000L},
+			new long[] {100L, 101L, 102L});
+		List<FrameState> second = deterministicSequence(
+			100L,
+			new long[] {7_000_000_000L, 3L, Long.MAX_VALUE},
+			new long[] {100L, 101L, 102L});
 
 		assertEquals(first, second);
-		assertEquals(new FrameState(1, FIXED_FRAME_TIME, FIXED_FRAME_TIME), first.getFirst());
-		assertEquals(new FrameState(3, FIXED_FRAME_TIME, FIXED_FRAME_TIME * 3.0F), first.getLast());
+		assertEquals(new FrameState(0, FIXED_FRAME_TIME, FIXED_FRAME_TIME), first.getFirst());
+		assertEquals(new FrameState(2, FIXED_FRAME_TIME, FIXED_FRAME_TIME * 3.0F), first.getLast());
+	}
+
+	@Test
+	void deterministicTimerUsesRenderedFrameOriginWhenRenderRepeats() {
+		activeScope = SystemTimeUniforms.beginDeterministicTime(100L);
+
+		SystemTimeUniforms.beginFrame(1L, 100L);
+		assertEquals(new FrameState(0, FIXED_FRAME_TIME, FIXED_FRAME_TIME), currentState());
+
+		SystemTimeUniforms.beginFrame(2L, 100L);
+		assertEquals(new FrameState(0, FIXED_FRAME_TIME, FIXED_FRAME_TIME), currentState());
+
+		SystemTimeUniforms.beginFrame(3L, 101L);
+		assertEquals(new FrameState(1, FIXED_FRAME_TIME, FIXED_FRAME_TIME * 2.0F), currentState());
 	}
 
 	@Test
@@ -41,7 +61,7 @@ class SystemTimeUniformsTest {
 		assertFalse(SystemTimeUniforms.isDeterministicTimeActive());
 		assertEquals(0.25F, SystemTimeUniforms.resolveTickDelta(0.25F));
 
-		activeScope = SystemTimeUniforms.beginDeterministicTime();
+		activeScope = SystemTimeUniforms.beginDeterministicTime(0L);
 		assertTrue(SystemTimeUniforms.isDeterministicTimeActive());
 		assertEquals(1.0F, SystemTimeUniforms.resolveTickDelta(0.0F));
 		assertEquals(1.0F, SystemTimeUniforms.resolveTickDelta(0.75F));
@@ -54,26 +74,27 @@ class SystemTimeUniformsTest {
 
 	@Test
 	void scopeIsNonNestableAndCloseRestoresRealTimeWithoutResettingFrameCounter() {
-		activeScope = SystemTimeUniforms.beginDeterministicTime();
-		SystemTimeUniforms.beginFrame(123L);
-		assertThrows(IllegalStateException.class, SystemTimeUniforms::beginDeterministicTime);
+		activeScope = SystemTimeUniforms.beginDeterministicTime(0L);
+		SystemTimeUniforms.beginFrame(123L, 0L);
+		assertThrows(IllegalStateException.class, () -> SystemTimeUniforms.beginDeterministicTime(0L));
 
 		SystemTimeUniforms.DeterministicTimeScope closedScope = activeScope;
 		activeScope.close();
 		activeScope = null;
 		closedScope.close();
 
-		SystemTimeUniforms.beginFrame(5_000_000_000L);
-		assertEquals(new FrameState(2, 0.0F, 0.0F), currentState());
-		SystemTimeUniforms.beginFrame(5_025_000_000L);
-		assertEquals(new FrameState(3, 0.025F, 0.025F), currentState());
+		SystemTimeUniforms.beginFrame(5_000_000_000L, 0L);
+		assertEquals(new FrameState(1, 0.0F, 0.0F), currentState());
+		SystemTimeUniforms.beginFrame(5_025_000_000L, 0L);
+		assertEquals(new FrameState(2, 0.025F, 0.025F), currentState());
 	}
 
-	private List<FrameState> deterministicSequence(long... realNanos) {
-		activeScope = SystemTimeUniforms.beginDeterministicTime();
+	private List<FrameState> deterministicSequence(long originFrame, long[] realNanos, long[] renderedFrames) {
+		assertEquals(realNanos.length, renderedFrames.length);
+		activeScope = SystemTimeUniforms.beginDeterministicTime(originFrame);
 		List<FrameState> states = new ArrayList<>();
-		for (long realNano : realNanos) {
-			SystemTimeUniforms.beginFrame(realNano);
+		for (int i = 0; i < realNanos.length; i++) {
+			SystemTimeUniforms.beginFrame(realNanos[i], renderedFrames[i]);
 			states.add(currentState());
 		}
 		activeScope.close();

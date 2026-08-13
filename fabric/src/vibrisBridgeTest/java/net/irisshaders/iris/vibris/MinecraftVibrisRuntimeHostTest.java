@@ -70,7 +70,7 @@ class MinecraftVibrisRuntimeHostTest {
 		CaptureResult capture = capture(plan, 13);
 		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled = scheduled(2, 10, 13, capture);
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
-		activeTimeScope = SystemTimeUniforms.beginDeterministicTime();
+		activeTimeScope = SystemTimeUniforms.beginDeterministicTime(0L);
 
 		MinecraftVibrisRuntimeHost.completeScheduledCapture(
 			result, reloaded(), plan, new TemporalResetResult(true), 2, scheduled, activeTimeScope, capture, null);
@@ -89,7 +89,7 @@ class MinecraftVibrisRuntimeHostTest {
 		CaptureResult capture = capture(plan, 14);
 		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled = scheduled(3, 10, 11, capture);
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
-		activeTimeScope = SystemTimeUniforms.beginDeterministicTime();
+		activeTimeScope = SystemTimeUniforms.beginDeterministicTime(0L);
 
 		MinecraftVibrisRuntimeHost.completeScheduledCapture(
 			result, reloaded(), plan, new TemporalResetResult(true), 2, scheduled, activeTimeScope, null,
@@ -109,7 +109,7 @@ class MinecraftVibrisRuntimeHostTest {
 		CaptureResult capture = capture(plan, 12);
 		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled = scheduled(1, 10, 12, capture);
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
-		activeTimeScope = SystemTimeUniforms.beginDeterministicTime();
+		activeTimeScope = SystemTimeUniforms.beginDeterministicTime(0L);
 
 		MinecraftVibrisRuntimeHost.completeScheduledCapture(
 			result, reloaded(), plan, new TemporalResetResult(true), 2, scheduled, activeTimeScope, null,
@@ -184,7 +184,7 @@ class MinecraftVibrisRuntimeHostTest {
 		CaptureResult capture = capture(plan, 12);
 		DeterministicTemporalCaptureScheduler.ScheduledCapture scheduled = scheduled(1, 10, 12, capture);
 		CompletableFuture<DeterministicTemporalCaptureOutcome> result = new CompletableFuture<>();
-		activeTimeScope = SystemTimeUniforms.beginDeterministicTime();
+		activeTimeScope = SystemTimeUniforms.beginDeterministicTime(0L);
 
 		MinecraftVibrisRuntimeHost.completeScheduledCapture(
 			result, reloaded(), plan, new TemporalResetResult(true), 2, scheduled, activeTimeScope, null, failure);
@@ -196,9 +196,9 @@ class MinecraftVibrisRuntimeHostTest {
 	}
 
 	private void assertRealTimeRestored() {
-		SystemTimeUniforms.beginFrame(5_000_000_000L);
+		SystemTimeUniforms.beginFrame(5_000_000_000L, 0L);
 		assertEquals(0.0F, SystemTimeUniforms.TIMER.getLastFrameTime());
-		SystemTimeUniforms.beginFrame(5_025_000_000L);
+		SystemTimeUniforms.beginFrame(5_025_000_000L, 0L);
 		assertEquals(0.025F, SystemTimeUniforms.TIMER.getLastFrameTime());
 		assertTrue(SystemTimeUniforms.COUNTER.getAsInt() > 0);
 	}

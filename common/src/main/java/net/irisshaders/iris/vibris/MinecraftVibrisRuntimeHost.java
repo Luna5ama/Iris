@@ -573,26 +573,29 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 		}
 		CapturePlan plan = ((DeterministicTemporalCapturePlanning.Planned) planning).plan();
 
+		SystemTimeUniforms.DeterministicTimeScope timeScope = null;
 		TemporalResetResult reset;
+		long originFrame = scheduler.currentFrame();
 		try {
+			timeScope = SystemTimeUniforms.beginDeterministicTime(originFrame);
 			reset = resetTemporal(cancellation);
 		} catch (Throwable failure) {
-			completeResetRejected(result, reloaded, plan, unwrap(failure), null);
+			Throwable cleanupFailure = timeScope == null ? null : closeCaptureScope(timeScope);
+			completeResetRejected(result, reloaded, plan, unwrap(failure), cleanupFailure);
 			return;
 		}
 		if (!reset.successful()) {
+			Throwable cleanupFailure = timeScope == null ? null : closeCaptureScope(timeScope);
 			completeResetRejected(
 				result,
 				reloaded,
 				plan,
 				new IllegalStateException("Temporal reset was rejected"),
-				null);
+				cleanupFailure);
 			return;
 		}
-		SystemTimeUniforms.DeterministicTimeScope timeScope = null;
 		DeterministicParticleAnimation.Scope particleScope;
 		try {
-			timeScope = SystemTimeUniforms.beginDeterministicTime();
 			DeterministicTextureAnimation.resetAll(minecraft);
 			particleScope = DeterministicParticleAnimation.begin(minecraft);
 		} catch (Throwable failure) {
