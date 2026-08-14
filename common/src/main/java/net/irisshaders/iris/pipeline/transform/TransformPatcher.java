@@ -1,5 +1,8 @@
 package net.irisshaders.iris.pipeline.transform;
 
+import com.google.common.hash.HashCode;
+import com.google.common.hash.Hasher;
+import com.google.common.hash.Hashing;
 import io.github.douira.glsl_transformer.GLSLLexer;
 import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
@@ -391,89 +394,43 @@ public class TransformPatcher {
 
 	private static class CacheKey {
 		final Parameters parameters;
-		final String vertex;
-		final String geometry;
-		final String tessControl;
-		final String tessEval;
-		final String fragment;
-		final String compute;
+		final HashCode sourceHash;
 
 		public CacheKey(Parameters parameters, String vertex, String geometry, String tessControl, String tessEval, String fragment) {
 			this.parameters = parameters;
-			this.vertex = vertex;
-			this.geometry = geometry;
-			this.tessControl = tessControl;
-			this.tessEval = tessEval;
-			this.fragment = fragment;
-			this.compute = null;
+			this.sourceHash = sourceHash(vertex, geometry, tessControl, tessEval, fragment);
 		}
 
 		public CacheKey(Parameters parameters, String compute) {
 			this.parameters = parameters;
-			this.vertex = null;
-			this.geometry = null;
-			this.tessControl = null;
-			this.tessEval = null;
-			this.fragment = null;
-			this.compute = compute;
+			this.sourceHash = sourceHash(compute);
 		}
 
 		@Override
 		public int hashCode() {
-			final int prime = 31;
-			int result = 1;
-			result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
-			result = prime * result + ((vertex == null) ? 0 : vertex.hashCode());
-			result = prime * result + ((geometry == null) ? 0 : geometry.hashCode());
-			result = prime * result + ((tessControl == null) ? 0 : tessControl.hashCode());
-			result = prime * result + ((tessEval == null) ? 0 : tessEval.hashCode());
-			result = prime * result + ((fragment == null) ? 0 : fragment.hashCode());
-			result = prime * result + ((compute == null) ? 0 : compute.hashCode());
-			return result;
+			return Objects.hash(parameters, sourceHash);
 		}
 
 		@Override
 		public boolean equals(Object obj) {
-			if (this == obj)
-				return true;
-			if (obj == null)
-				return false;
-			if (getClass() != obj.getClass())
-				return false;
+			if (this == obj) return true;
+			if (obj == null || getClass() != obj.getClass()) return false;
 			CacheKey other = (CacheKey) obj;
-			if (parameters == null) {
-				if (other.parameters != null)
-					return false;
-			} else if (!parameters.equals(other.parameters))
-				return false;
-			if (vertex == null) {
-				if (other.vertex != null)
-					return false;
-			} else if (!vertex.equals(other.vertex))
-				return false;
-			if (geometry == null) {
-				if (other.geometry != null)
-					return false;
-			} else if (!geometry.equals(other.geometry))
-				return false;
-			if (tessControl == null) {
-				if (other.tessControl != null)
-					return false;
-			} else if (!tessControl.equals(other.tessControl))
-				return false;
-			if (tessEval == null) {
-				if (other.tessEval != null)
-					return false;
-			} else if (!tessEval.equals(other.tessEval))
-				return false;
-			if (fragment == null) {
-				if (other.fragment != null)
-					return false;
-			} else if (!fragment.equals(other.fragment))
-				return false;
-			if (compute == null) {
-				return other.compute == null;
-			} else return compute.equals(other.compute);
+			return Objects.equals(parameters, other.parameters) && sourceHash.equals(other.sourceHash);
+		}
+
+		private static HashCode sourceHash(String... sources) {
+			Hasher hasher = Hashing.sha256().newHasher();
+			hasher.putInt(sources.length);
+			for (String source : sources) {
+				if (source == null) {
+					hasher.putInt(-1);
+				} else {
+					hasher.putInt(source.length());
+					hasher.putUnencodedChars(source);
+				}
+			}
+			return hasher.hash();
 		}
 	}
 }
