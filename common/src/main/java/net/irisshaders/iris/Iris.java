@@ -27,6 +27,7 @@ import net.irisshaders.iris.helpers.OptionalBoolean;
 import net.irisshaders.iris.pbr.texture.PBRTextureManager;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.pipeline.PipelineManager;
+import net.irisshaders.iris.pipeline.transform.TransformPatcher;
 import net.irisshaders.iris.pipeline.VanillaRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
@@ -617,6 +618,14 @@ public class Iris {
 	}
 
 	public static ReloadResult reloadVibrisShaderpack(Map<String, String> requestOverrides) {
+		try {
+			return reloadVibrisShaderpackInternal(requestOverrides);
+		} finally {
+			TransformPatcher.clearCaches();
+		}
+	}
+
+	private static ReloadResult reloadVibrisShaderpackInternal(Map<String, String> requestOverrides) {
 		SHADER_DEBUG_CONTROL.clearErrors();
 		ShaderPack previousPack = currentPack;
 		String previousPackName = currentPackName;

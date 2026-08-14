@@ -4,6 +4,7 @@ import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import io.github.douira.glsl_transformer.GLSLLexer;
+import io.github.douira.glsl_transformer.ast.data.TypedTreeCache;
 import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
 import io.github.douira.glsl_transformer.ast.node.Version;
@@ -256,6 +257,13 @@ public class TransformPatcher {
 			ShaderPrinter.printProgram("errored_" + name).addSources(inputs).print();
 			throw new ShaderCompileException(name, e);
 		}
+	}
+
+	public static void clearCaches() {
+		cache.clear();
+		transformer.setParsingCacheStrategy(EnumASTTransformer.ParsingCacheStrategy.TWO_TIER);
+		transformer.setBuildCache(new TypedTreeCache<>());
+		transformer.setTokenFilter(parseTokenFilter);
 	}
 
 	static void appendSourceMapMetadata(Map<PatchShaderType, String> transformed,
