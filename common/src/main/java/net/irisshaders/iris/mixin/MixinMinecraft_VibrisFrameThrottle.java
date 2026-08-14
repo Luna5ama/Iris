@@ -6,6 +6,7 @@ import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
 import net.irisshaders.iris.vibris.DeterministicWorldSimulation;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleEngine;
@@ -21,6 +22,20 @@ import java.util.function.BooleanSupplier;
 
 @Mixin(Minecraft.class)
 public class MixinMinecraft_VibrisFrameThrottle {
+	@Inject(method = "runTick", at = @At("HEAD"))
+	private void iris$blockUserInputDuringVibrisActivity(boolean tick, CallbackInfo ci) {
+		if (!IrisVibrisLifecycle.shouldBlockUserInput()) return;
+
+		Minecraft minecraft = (Minecraft) (Object) this;
+		minecraft.mouseHandler.releaseMouse();
+		KeyMapping.releaseAll();
+	}
+
+	@Inject(method = "setWindowActive", at = @At("TAIL"))
+	private void iris$vibrisWindowFocusChanged(boolean focused, CallbackInfo ci) {
+		IrisVibrisLifecycle.windowFocusChanged(focused);
+	}
+
 	@Inject(method = "getDeltaTracker", at = @At("RETURN"), cancellable = true)
 	private void iris$useDeterministicDeltaTracker(CallbackInfoReturnable<DeltaTracker> cir) {
 		cir.setReturnValue(SystemTimeUniforms.resolveDeltaTracker(cir.getReturnValue()));
@@ -103,7 +118,8 @@ public class MixinMinecraft_VibrisFrameThrottle {
 		at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/FramerateLimitTracker;getFramerateLimit()I")
 	)
 	private int iris$vibrisIdleFramerateLimit(FramerateLimitTracker tracker) {
-		return IrisVibrisLifecycle.idleFramerateLimit(tracker.getFramerateLimit());
+		Minecraft minecraft = (Minecraft) (Object) this;
+		return IrisVibrisLifecycle.idleFramerateLimit(tracker.getFramerateLimit(), minecraft.isWindowActive());
 	}
 
 	@Redirect(

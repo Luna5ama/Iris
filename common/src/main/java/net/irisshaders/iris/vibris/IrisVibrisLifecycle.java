@@ -21,6 +21,7 @@ public final class IrisVibrisLifecycle {
 	private static volatile ThreadBoundVibrisRuntimeAdapter runtimeAdapter;
 	private static volatile Thread idleWaitThread;
 	private static volatile long idleSinceNanos = Long.MAX_VALUE;
+	private static volatile boolean windowFocused;
 	private static volatile MinecraftVibrisRuntimeHost host;
 
 	private IrisVibrisLifecycle() {
@@ -94,10 +95,21 @@ public final class IrisVibrisLifecycle {
 		return current == null ? 0 : current.currentFrame();
 	}
 
-	public static int idleFramerateLimit(int configuredLimit) {
+	public static int idleFramerateLimit(int configuredLimit, boolean focused) {
+		windowFocused = focused;
 		boolean idle = shouldThrottleIdle();
 		IDLE_LIMIT_SELECTED.set(idle);
 		return idle ? IDLE_FRAMERATE_LIMIT : configuredLimit;
+	}
+
+	public static boolean shouldBlockUserInput() {
+		ThreadBoundVibrisRuntimeAdapter current = runtimeAdapter;
+		return shouldBlockUserInput(current != null, current != null && current.isIdle(), idleSinceNanos, System.nanoTime());
+	}
+
+	public static void windowFocusChanged(boolean focused) {
+		windowFocused = focused;
+		if (focused) wakeIdleWait();
 	}
 
 	public static void limitDisplayFps(int framerateLimit) {
@@ -125,9 +137,21 @@ public final class IrisVibrisLifecycle {
 
 	private static boolean shouldThrottleIdle() {
 		ThreadBoundVibrisRuntimeAdapter current = runtimeAdapter;
-		long idleSince = idleSinceNanos;
-		return current != null && current.isIdle() && idleSince != Long.MAX_VALUE &&
-			System.nanoTime() - idleSince >= IDLE_TIMEOUT_NANOS;
+		return shouldThrottleIdle(windowFocused, current != null, current != null && current.isIdle(),
+			idleSinceNanos, System.nanoTime());
+	}
+
+	static boolean shouldThrottleIdle(boolean focused, boolean runtimeAvailable, boolean runtimeIdle,
+								  long idleSince, long now) {
+		return !focused && runtimeAvailable && idleTimeoutElapsed(runtimeIdle, idleSince, now);
+	}
+
+	static boolean shouldBlockUserInput(boolean runtimeAvailable, boolean runtimeIdle, long idleSince, long now) {
+		return runtimeAvailable && !idleTimeoutElapsed(runtimeIdle, idleSince, now);
+	}
+
+	static boolean idleTimeoutElapsed(boolean runtimeIdle, long idleSince, long now) {
+		return runtimeIdle && idleSince != Long.MAX_VALUE && now - idleSince >= IDLE_TIMEOUT_NANOS;
 	}
 
 	private static void runtimeActivityChanged(boolean active) {
