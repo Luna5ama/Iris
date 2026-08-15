@@ -10,6 +10,7 @@ import net.irisshaders.iris.mixinterface.VibrisTerrainQuiescence;
 import net.irisshaders.iris.mixin.WorldOpenFlowsInvoker;
 import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -180,7 +181,7 @@ final class MinecraftContextController {
 
 		IntegratedServer server = minecraft.getSingleplayerServer();
 		if (server != null && requiresSaveSwitch(runningSave(server), operation.resolved.saveName())) {
-			switchSave(operation, server);
+			switchSave(operation);
 		} else if (server != null) {
 			applyLoadedSave(operation, server);
 		} else {
@@ -262,7 +263,7 @@ final class MinecraftContextController {
 		pollForSave(operation);
 	}
 
-	private void switchSave(ContextOperation operation, IntegratedServer server) {
+	private void switchSave(ContextOperation operation) {
 		if (abort(operation)) return;
 		if (!minecraft.getLevelSource().levelExists(operation.resolved.saveName())) {
 			fail(operation, "The configured singleplayer save does not exist.");
@@ -292,10 +293,7 @@ final class MinecraftContextController {
 			return;
 		}
 		try {
-			// The client disconnect loop only finishes after the integrated server has begun shutting down.
-			// Vibris runs from inside a client task, where closing the connection alone cannot make that progress.
-			server.halt(false);
-			minecraft.disconnectWithSavingScreen();
+			minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE);
 		} catch (Throwable exception) {
 			try {
 				access.safeClose();

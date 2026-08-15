@@ -976,6 +976,7 @@ public final class MinecraftVibrisRuntimeHost implements VibrisRuntimeHost {
 	@Override
 	public void close() {
 		closed = true;
+		presets.close();
 		contexts.close();
 		if ("vibris".equals(Iris.getCurrentPackName()) &&
 			Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline) {
