@@ -122,7 +122,7 @@ public class IncludeGraph {
 				continue;
 			}
 
-			ImmutableList<String> lines = ImmutableList.copyOf(source.split("\\R"));
+			ImmutableList<String> lines = splitLines(source);
 
 			FileNode node = new FileNode(next, lines);
 			boolean selfInclude = false;
@@ -154,6 +154,48 @@ public class IncludeGraph {
 		this.failures = ImmutableMap.copyOf(failures);
 
 		detectCycle();
+	}
+
+	static ImmutableList<String> splitLines(String source) {
+		if (source.isEmpty()) {
+			return ImmutableList.of("");
+		}
+
+		int contentEnd = source.length();
+		while (contentEnd > 0 && isLineBreak(source.charAt(contentEnd - 1))) {
+			contentEnd--;
+		}
+		if (contentEnd == 0) {
+			return ImmutableList.of();
+		}
+
+		ImmutableList.Builder<String> lines = ImmutableList.builder();
+		int lineStart = 0;
+		int index = 0;
+		while (index < source.length()) {
+			char character = source.charAt(index);
+			if (!isLineBreak(character)) {
+				index++;
+				continue;
+			}
+
+			lines.add(source.substring(lineStart, index));
+			if (character == '\r' && index + 1 < source.length() && source.charAt(index + 1) == '\n') {
+				index++;
+			}
+			lineStart = ++index;
+			if (lineStart > contentEnd) {
+				return lines.build();
+			}
+		}
+
+		lines.add(source.substring(lineStart));
+		return lines.build();
+	}
+
+	private static boolean isLineBreak(char character) {
+		return character == '\n' || character == '\r' || character == '\u000B' || character == '\f'
+			|| character == '\u0085' || character == '\u2028' || character == '\u2029';
 	}
 
 	private static String readFile(Path path) throws IOException {
