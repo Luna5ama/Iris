@@ -2,7 +2,6 @@ package net.irisshaders.iris.shaderpack.include;
 
 import com.google.common.collect.ImmutableList;
 import java.util.HashSet;
-import java.util.Objects;
 
 // TODO: Write tests for this code
 public class IncludeProcessor {
@@ -21,17 +20,18 @@ public class IncludeProcessor {
 	}
 
 	public IncludedSource getIncludedSource(AbsolutePackPath path) {
-		return new IncludedSource(process(path, new HashSet<>()));
+		ImmutableList.Builder<SourceLine> linesBuilder = ImmutableList.builder();
+		process(path, new HashSet<>(), linesBuilder);
+		return new IncludedSource(linesBuilder.build());
 	}
 
-	private ImmutableList<SourceLine> process(AbsolutePackPath path, HashSet<AbsolutePackPath> includedSet) {
+	private void process(AbsolutePackPath path, HashSet<AbsolutePackPath> includedSet,
+						 ImmutableList.Builder<SourceLine> linesBuilder) {
 		FileNode fileNode = graph.getNodes().get(path);
 
 		if (fileNode == null) {
-			return ImmutableList.of();
+			return;
 		}
-
-		ImmutableList.Builder<SourceLine> linesBuilder = ImmutableList.builder();
 
 		ImmutableList<String> lines = fileNode.getLines();
 		var includes = fileNode.getIncludes();
@@ -48,12 +48,10 @@ public class IncludeProcessor {
 						continue;
 					}
 				}
-				linesBuilder.addAll(Objects.requireNonNull(process(includePath, subIncludedSet)));
+				process(includePath, subIncludedSet, linesBuilder);
 			} else {
-				linesBuilder.add(new SourceLine(lines.get(i), path, i + 1));
+				linesBuilder.add(fileNode.getSourceLine(i));
 			}
 		}
-
-		return linesBuilder.build();
 	}
 }

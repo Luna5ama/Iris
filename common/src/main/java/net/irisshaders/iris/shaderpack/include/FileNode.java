@@ -14,6 +14,7 @@ public class FileNode {
 
 	private final AbsolutePackPath path;
 	private final ImmutableList<String> lines;
+	private final ImmutableList<SourceLine> sourceLines;
 	private final ImmutableMap<Integer, IncludeEntry> includes;
 	private final boolean includeGuard;
 
@@ -26,6 +27,7 @@ public class FileNode {
 	) {
 		this.path = path;
 		this.lines = lines;
+		this.sourceLines = createSourceLines(path, lines);
 		this.includes = includes;
 		this.includeGuard = includeGuard;
 	}
@@ -33,6 +35,7 @@ public class FileNode {
 	public FileNode(AbsolutePackPath path, ImmutableList<String> lines) {
 		this.path = path;
 		this.lines = lines;
+		this.sourceLines = createSourceLines(path, lines);
 
 		boolean foundIncludeGuard = false;
 		AbsolutePackPath currentDirectory = path.parent().orElseThrow(
@@ -155,6 +158,10 @@ public class FileNode {
 		return lines;
 	}
 
+	public SourceLine getSourceLine(int index) {
+		return sourceLines.get(index);
+	}
+
 	public ImmutableMap<Integer, IncludeEntry> getIncludes() {
 		return includes;
 	}
@@ -181,6 +188,14 @@ public class FileNode {
 		}
 
 		return new FileNode(path, newLines.build(), includes, includeGuard);
+	}
+
+	private static ImmutableList<SourceLine> createSourceLines(AbsolutePackPath path, ImmutableList<String> lines) {
+		ImmutableList.Builder<SourceLine> sourceLines = ImmutableList.builderWithExpectedSize(lines.size());
+		for (int i = 0; i < lines.size(); i++) {
+			sourceLines.add(new SourceLine(lines.get(i), path, i + 1));
+		}
+		return sourceLines.build();
 	}
 
 	public record IncludeEntry(AbsolutePackPath path, boolean conditional) {}

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class IncludeProcessorTest {
 	@Test
@@ -41,5 +42,10 @@ class IncludeProcessorTest {
 		assertEquals("void main() {", source.lines().get(4).text());
 		assertEquals("/shaders/main.fsh", source.lines().get(4).path().getPathString());
 		assertEquals(3, source.lines().get(4).line());
+
+		IncludedSource secondExpansion = new IncludeProcessor(graph).getIncludedSource(rootPath);
+		for (int i = 0; i < source.lines().size(); i++) {
+			assertSame(source.lines().get(i), secondExpansion.lines().get(i));
+		}
 	}
 }
