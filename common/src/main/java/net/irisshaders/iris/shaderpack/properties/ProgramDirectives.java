@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
+import net.irisshaders.iris.gl.IrisLimits;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
 import net.irisshaders.iris.gl.blending.BufferBlendInformation;
@@ -25,6 +26,17 @@ import java.util.Set;
 
 public class ProgramDirectives {
 	private static final ImmutableList<String> LEGACY_RENDER_TARGETS = PackRenderTargetDirectives.LEGACY_RENDER_TARGETS;
+	private static final String[] COLORTEX_MIPMAP_DIRECTIVES = new String[IrisLimits.MAX_COLOR_BUFFERS];
+	private static final String[] LEGACY_MIPMAP_DIRECTIVES = new String[LEGACY_RENDER_TARGETS.size()];
+
+	static {
+		for (int index = 0; index < COLORTEX_MIPMAP_DIRECTIVES.length; index++) {
+			COLORTEX_MIPMAP_DIRECTIVES[index] = "colortex" + index + "MipmapEnabled";
+		}
+		for (int index = 0; index < LEGACY_MIPMAP_DIRECTIVES.length; index++) {
+			LEGACY_MIPMAP_DIRECTIVES[index] = LEGACY_RENDER_TARGETS.get(index) + "MipmapEnabled";
+		}
+	}
 
 	private final int[] drawBuffers;
 	private final ViewportData viewportScale;
@@ -108,10 +120,10 @@ public class ProgramDirectives {
 				}
 			};
 
-			directiveHolder.acceptConstBooleanDirective("colortex" + index + "MipmapEnabled", mipmapHandler);
+			directiveHolder.acceptConstBooleanDirective(colortexMipmapDirective(index), mipmapHandler);
 
 			if (index < LEGACY_RENDER_TARGETS.size()) {
-				directiveHolder.acceptConstBooleanDirective(LEGACY_RENDER_TARGETS.get(index) + "MipmapEnabled", mipmapHandler);
+				directiveHolder.acceptConstBooleanDirective(LEGACY_MIPMAP_DIRECTIVES[index], mipmapHandler);
 			}
 		});
 
@@ -121,6 +133,12 @@ public class ProgramDirectives {
 		}
 
 		this.mipmappedBuffers = ImmutableSet.copyOf(mipmappedBuffers);
+	}
+
+	private static String colortexMipmapDirective(int index) {
+		return index >= 0 && index < COLORTEX_MIPMAP_DIRECTIVES.length
+			? COLORTEX_MIPMAP_DIRECTIVES[index]
+			: "colortex" + index + "MipmapEnabled";
 	}
 
 	private static Optional<CommentDirective> findDrawbuffersDirective(Optional<String> stageSource) {
