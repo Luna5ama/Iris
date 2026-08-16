@@ -105,7 +105,8 @@ public class JcppProcessor {
 
 		writer.appendTrailingNewline();
 
-		source = listener.collectLines() + writer.output();
+		listener.prependLinesTo(writer.builder);
+		source = writer.output();
 		source = ShaderSourceMap.appendMetadata(source, writer.sourcePaths());
 
 		return source;

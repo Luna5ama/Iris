@@ -27,7 +27,7 @@ public class GlslCollectingListener extends DefaultPreprocessorListener {
 		}
 	}
 
-	public String collectLines() {
-		return builder.toString();
+	public void prependLinesTo(StringBuilder target) {
+		target.insert(0, builder, 0, builder.length());
 	}
 }
