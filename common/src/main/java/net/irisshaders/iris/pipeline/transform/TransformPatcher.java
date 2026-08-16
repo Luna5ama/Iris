@@ -12,6 +12,7 @@ import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
 import io.github.douira.glsl_transformer.ast.node.Version;
 import io.github.douira.glsl_transformer.ast.node.VersionStatement;
+import io.github.douira.glsl_transformer.ast.node.abstract_node.ASTNode;
 import io.github.douira.glsl_transformer.ast.node.external_declaration.ExternalDeclaration;
 import io.github.douira.glsl_transformer.ast.node.statement.Statement;
 import io.github.douira.glsl_transformer.ast.print.PrintType;
@@ -58,7 +59,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.lang.ref.SoftReference;
-import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -107,6 +107,8 @@ public class TransformPatcher {
 	private static final List<String> internalPrefixes = List.of("iris_", "irisMain", "moj_import");
 	private static final int IRIS_GENERATED_SOURCE_ID = 1_000_000_000;
 	private static final String IRIS_GENERATED_SOURCE_NAME = "<Iris-generated shader code>";
+	private static final NumberedSourceLocation IRIS_GENERATED_SOURCE_LOCATION =
+		new NumberedSourceLocation(0, 1, IRIS_GENERATED_SOURCE_ID);
 	private static final Pattern versionPattern = Pattern.compile("#version\\s+(\\d+)", Pattern.DOTALL);
 	private static final EnumASTTransformer<Parameters, PatchShaderType> transformer;
 	static Logger LOGGER = LogManager.getLogger(TransformPatcher.class);
@@ -293,13 +295,19 @@ public class TransformPatcher {
 			: sourceMaps.get(type).appendMetadataTo(source));
 	}
 
-	private static void markGeneratedSourceLocations(TranslationUnit tree) {
-		tree.getRoot().nodeIndex.index.values().stream()
-			.flatMap(Collection::stream)
-			.filter(node -> node instanceof ExternalDeclaration || node instanceof Statement)
-			.filter(node -> node.getSourceLocation() == null || !node.getSourceLocation().canPrint())
-			.forEach(node -> node.setSourceLocation(
-				new NumberedSourceLocation(0, 1, IRIS_GENERATED_SOURCE_ID)));
+	static void markGeneratedSourceLocations(TranslationUnit tree) {
+		for (var entry : tree.getRoot().nodeIndex.index.entrySet()) {
+			Class<ASTNode> nodeType = entry.getKey();
+			if (!ExternalDeclaration.class.isAssignableFrom(nodeType)
+				&& !Statement.class.isAssignableFrom(nodeType)) {
+				continue;
+			}
+			for (ASTNode node : entry.getValue()) {
+				if (node.getSourceLocation() == null || !node.getSourceLocation().canPrint()) {
+					node.setSourceLocation(IRIS_GENERATED_SOURCE_LOCATION);
+				}
+			}
+		}
 	}
 
 	private static Map<PatchShaderType, String> transform(String name, String vertex, String geometry, String tessControl, String tessEval, String fragment,
