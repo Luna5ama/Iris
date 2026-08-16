@@ -850,7 +850,7 @@ final class MinecraftContextController {
 
 	private void pollLater(ContextOperation operation, Runnable check) {
 		if (isActive(operation) && !operation.sceneReady.isDone()) {
-			CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS).execute(() -> minecraft.execute(check));
+			CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS, minecraft).execute(check);
 		}
 	}
 
