@@ -61,10 +61,6 @@ public class CustomUniforms implements FunctionContext {
 				CachedUniform cachedUniform = CachedUniform
 					.forExpression(variable.name, variable.type, expression, this);
 				this.addVariable(expression, cachedUniform);
-				if (variable.uniform) {
-					List<CachedUniform> uniforms = new ArrayList<>();
-					uniforms.add(cachedUniform);
-				}
 				//Iris.logger.info("Was able to resolve uniform " + variable.name + " = " + variable.expression);
 			} catch (Exception e) {
 				Iris.logger
