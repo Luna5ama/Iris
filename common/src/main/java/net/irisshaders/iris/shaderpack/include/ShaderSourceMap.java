@@ -21,8 +21,6 @@ public final class ShaderSourceMap {
 		.softValues()
 		.build();
 	private static final String METADATA_PREFIX = "// IRIS_SOURCE ";
-	private static final Pattern METADATA_PATTERN = Pattern.compile(
-		"(?m)^// IRIS_SOURCE (\\d+) ([A-Za-z0-9_-]+)\\R?");
 	private static final Pattern COLON_LOCATION = Pattern.compile(
 		"(?<![\\p{Alnum}_./-])(\\d+):(\\d+)(?=[:(])");
 	private static final Pattern PAREN_LOCATION = Pattern.compile(
@@ -47,19 +45,86 @@ public final class ShaderSourceMap {
 			return cached;
 		}
 
-		Matcher matcher = METADATA_PATTERN.matcher(source);
-		Map<Integer, String> sourcePaths = new TreeMap<>();
-		StringBuilder stripped = new StringBuilder();
-		while (matcher.find()) {
-			int sourceId = Integer.parseInt(matcher.group(1));
-			String path = new String(Base64.getUrlDecoder().decode(matcher.group(2)), StandardCharsets.UTF_8);
+		Map<Integer, String> sourcePaths = null;
+		StringBuilder stripped = null;
+		int copiedThrough = 0;
+		int searchFrom = 0;
+		while (true) {
+			int markerStart = source.indexOf(METADATA_PREFIX, searchFrom);
+			if (markerStart < 0) {
+				break;
+			}
+			searchFrom = markerStart + METADATA_PREFIX.length();
+			if (markerStart > 0 && !isLineBreak(source.charAt(markerStart - 1))) {
+				continue;
+			}
+
+			int sourceIdStart = searchFrom;
+			while (searchFrom < source.length() && isAsciiDigit(source.charAt(searchFrom))) {
+				searchFrom++;
+			}
+			if (searchFrom == sourceIdStart || searchFrom >= source.length() || source.charAt(searchFrom) != ' ') {
+				continue;
+			}
+
+			int encodedPathStart = ++searchFrom;
+			while (searchFrom < source.length() && isBase64UrlCharacter(source.charAt(searchFrom))) {
+				searchFrom++;
+			}
+			if (searchFrom == encodedPathStart
+				|| searchFrom < source.length() && !isLineBreak(source.charAt(searchFrom))) {
+				continue;
+			}
+
+			int markerEnd = skipLineBreak(source, searchFrom);
+			int sourceId = Integer.parseInt(source, sourceIdStart, encodedPathStart - 1, 10);
+			String encodedPath = source.substring(encodedPathStart, searchFrom);
+			String path = new String(Base64.getUrlDecoder().decode(encodedPath), StandardCharsets.UTF_8);
+			if (stripped == null) {
+				stripped = new StringBuilder(source.length());
+				sourcePaths = new TreeMap<>();
+			}
+			stripped.append(source, copiedThrough, markerStart);
+			copiedThrough = markerEnd;
 			sourcePaths.put(sourceId, path);
-			matcher.appendReplacement(stripped, "");
+			searchFrom = markerEnd;
 		}
-		matcher.appendTail(stripped);
-		ShaderSourceMap parsed = new ShaderSourceMap(stripped.toString(), sourcePaths);
+
+		ShaderSourceMap parsed;
+		if (stripped == null) {
+			parsed = new ShaderSourceMap(source, Map.of());
+		} else {
+			stripped.append(source, copiedThrough, source.length());
+			parsed = new ShaderSourceMap(stripped.toString(), sourcePaths);
+		}
 		PARSE_CACHE.put(source, parsed);
 		return parsed;
+	}
+
+	private static boolean isAsciiDigit(char character) {
+		return character >= '0' && character <= '9';
+	}
+
+	private static boolean isBase64UrlCharacter(char character) {
+		return character >= 'A' && character <= 'Z'
+			|| character >= 'a' && character <= 'z'
+			|| character >= '0' && character <= '9'
+			|| character == '_'
+			|| character == '-';
+	}
+
+	private static boolean isLineBreak(char character) {
+		return character == '\n' || character == '\r' || character == '\u000B' || character == '\f'
+			|| character == '\u0085' || character == '\u2028' || character == '\u2029';
+	}
+
+	private static int skipLineBreak(String source, int index) {
+		if (index >= source.length()) {
+			return index;
+		}
+		return source.charAt(index) == '\r' && index + 1 < source.length() && source.charAt(index + 1) == '\n'
+			? index + 2
+			: index + 1;
 	}
 
 	public static boolean containsReservedMarker(String source) {

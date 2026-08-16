@@ -2,6 +2,8 @@ package net.irisshaders.iris.shaderpack.include;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,6 +23,25 @@ class ShaderSourceMapTest {
 		String source = ShaderSourceMap.appendMetadata("#version 330\n", Map.of(1, "/shaders/main.fsh"));
 
 		assertSame(ShaderSourceMap.parse(source), ShaderSourceMap.parse(source));
+	}
+
+	@Test
+	void removesMetadataWithCrLfLineEndings() {
+		String encodedPath = Base64.getUrlEncoder().withoutPadding()
+			.encodeToString("/shaders/main.fsh".getBytes(StandardCharsets.UTF_8));
+		String source = "#version 330\r\n// IRIS_SOURCE 1 " + encodedPath + "\r\nvoid main() {}\r\n";
+
+		ShaderSourceMap sourceMap = ShaderSourceMap.parse(source);
+
+		assertEquals("#version 330\r\nvoid main() {}\r\n", sourceMap.sourceWithoutMetadata());
+		assertEquals(Map.of(1, "/shaders/main.fsh"), sourceMap.sourcePaths());
+	}
+
+	@Test
+	void preservesMarkerTextThatIsNotACompleteMetadataLine() {
+		String source = "#version 330\n// mention // IRIS_SOURCE 1 invalid! here\n";
+
+		assertSame(source, ShaderSourceMap.parse(source).sourceWithoutMetadata());
 	}
 
 	@Test
