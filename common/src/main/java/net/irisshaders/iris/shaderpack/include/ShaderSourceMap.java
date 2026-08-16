@@ -10,6 +10,8 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -141,7 +143,11 @@ public final class ShaderSourceMap {
 		if (!stripped.endsWith("\n")) {
 			builder.append('\n');
 		}
-		for (var entry : new TreeMap<>(sourcePaths).entrySet()) {
+		Set<Map.Entry<Integer, String>> sortedEntries = sourcePaths instanceof SortedMap<?, ?> sortedMap
+			&& sortedMap.comparator() == null
+			? sourcePaths.entrySet()
+			: new TreeMap<>(sourcePaths).entrySet();
+		for (var entry : sortedEntries) {
 			String encodedPath = Base64.getUrlEncoder().withoutPadding()
 				.encodeToString(entry.getValue().getBytes(StandardCharsets.UTF_8));
 			builder.append(METADATA_PREFIX).append(entry.getKey()).append(' ')
