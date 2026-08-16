@@ -9,7 +9,6 @@ import net.irisshaders.iris.shaderpack.programs.ComputeSource;
 import net.irisshaders.iris.shaderpack.programs.ProgramSet;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -28,6 +27,7 @@ import java.util.regex.Pattern;
 
 public final class IrisVibrisCompileCatalog {
 	private static final byte[] PATCHED_SOURCE_HASH_DOMAIN = "vibris-patched-program-v1".getBytes(StandardCharsets.UTF_8);
+	private static final ThreadLocal<byte[]> PATCHED_SOURCE_HASH_BUFFER = ThreadLocal.withInitial(() -> new byte[8192]);
 	private static final Pattern GLSL_LOCATION = Pattern.compile("^(?:ERROR|WARNING)?\\s*:?\\s*(?:[^:]+:)?(\\d+)(?::|\\()(\\d+)?\\)?\\s*:?\\s*(.*)$", Pattern.CASE_INSENSITIVE);
 	private static final AtomicLong NEXT_GENERATION = new AtomicLong();
 	private static final ThreadLocal<Session> ACTIVE = new ThreadLocal<>();
@@ -201,9 +201,63 @@ public final class IrisVibrisCompileCatalog {
 	}
 
 	private static void updateField(MessageDigest digest, String value) {
-		byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-		digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
-		digest.update(bytes);
+		int byteLength = utf8Length(value);
+		digest.update((byte) (byteLength >>> 24));
+		digest.update((byte) (byteLength >>> 16));
+		digest.update((byte) (byteLength >>> 8));
+		digest.update((byte) byteLength);
+
+		byte[] buffer = PATCHED_SOURCE_HASH_BUFFER.get();
+		int position = 0;
+		for (int index = 0; index < value.length(); index++) {
+			if (position > buffer.length - 4) {
+				digest.update(buffer, 0, position);
+				position = 0;
+			}
+			char character = value.charAt(index);
+			if (character < 0x80) {
+				buffer[position++] = (byte) character;
+			} else if (character < 0x800) {
+				buffer[position++] = (byte) (0xC0 | character >>> 6);
+				buffer[position++] = (byte) (0x80 | character & 0x3F);
+			} else if (Character.isHighSurrogate(character) && index + 1 < value.length()
+				&& Character.isLowSurrogate(value.charAt(index + 1))) {
+				int codePoint = Character.toCodePoint(character, value.charAt(++index));
+				buffer[position++] = (byte) (0xF0 | codePoint >>> 18);
+				buffer[position++] = (byte) (0x80 | codePoint >>> 12 & 0x3F);
+				buffer[position++] = (byte) (0x80 | codePoint >>> 6 & 0x3F);
+				buffer[position++] = (byte) (0x80 | codePoint & 0x3F);
+			} else if (Character.isSurrogate(character)) {
+				buffer[position++] = '?';
+			} else {
+				buffer[position++] = (byte) (0xE0 | character >>> 12);
+				buffer[position++] = (byte) (0x80 | character >>> 6 & 0x3F);
+				buffer[position++] = (byte) (0x80 | character & 0x3F);
+			}
+		}
+		if (position > 0) {
+			digest.update(buffer, 0, position);
+		}
+	}
+
+	private static int utf8Length(String value) {
+		int length = 0;
+		for (int index = 0; index < value.length(); index++) {
+			char character = value.charAt(index);
+			if (character < 0x80 || Character.isSurrogate(character)
+				&& (!Character.isHighSurrogate(character) || index + 1 >= value.length()
+				|| !Character.isLowSurrogate(value.charAt(index + 1)))) {
+				length++;
+			} else if (character < 0x800) {
+				length += 2;
+			} else if (Character.isHighSurrogate(character)) {
+				length += 4;
+				index++;
+			} else {
+				length += 3;
+			}
+		}
+		return length;
 	}
 
 	private static String toHex(byte[] bytes) {
