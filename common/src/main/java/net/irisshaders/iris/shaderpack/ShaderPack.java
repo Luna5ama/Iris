@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.JsonReader;
-import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
@@ -361,30 +360,18 @@ public class ShaderPack {
 				var task2 = new RecursiveAction() {
 					@Override
 					protected void compute() {
-						shaderProperties.getCustomTextures().entrySet().parallelStream()
-							.map(entry -> {
-								var textureStage = entry.getKey();
-								var customTexturePropertiesMap = entry.getValue();
-								var innerCustomTextureDataMap = customTexturePropertiesMap.object2ObjectEntrySet().parallelStream()
-									.map(innerEntry -> {
-										var samplerName = innerEntry.getKey();
-										var path = innerEntry.getValue();
-										try {
-											return Pair.of(samplerName, readTexture(root, path));
-										} catch (IOException e) {
-											Iris.logger.error("Unable to read the custom texture at " + path, e);
-											return null;
-										}
-									})
-									.filter(Objects::nonNull)
-									.sequential()
-									.collect(Collectors.toMap(Pair::first, Pair::second, (a, b) -> a, Object2ObjectOpenHashMap::new));
-								return Pair.of(textureStage, innerCustomTextureDataMap);
-							})
-							.sequential()
-							.forEach((pair) -> {
-								customTextureDataMap.put(pair.first(), pair.second());
+						shaderProperties.getCustomTextures().forEach((textureStage, textureProperties) -> {
+							var textureData = new Object2ObjectOpenHashMap<String, CustomTextureData>(
+								textureProperties.size());
+							textureProperties.forEach((samplerName, path) -> {
+								try {
+									textureData.put(samplerName, readTexture(root, path));
+								} catch (IOException e) {
+									Iris.logger.error("Unable to read the custom texture at " + path, e);
+								}
 							});
+							customTextureDataMap.put(textureStage, textureData);
+						});
 					}
 				}.fork();
 
