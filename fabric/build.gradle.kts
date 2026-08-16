@@ -106,7 +106,7 @@ dependencies {
 
     modImplementation(SODIUM_DEPENDENCY_FABRIC)
     implementAndInclude("org.antlr:antlr4-runtime:4.13.1")
-    implementAndInclude("io.github.douira:glsl-transformer:3.0.0-pre3-iris6")
+    implementAndInclude("io.github.douira:glsl-transformer:3.0.0-pre3-iris7")
     implementAndInclude("org.anarres:jcpp:1.4.14")
 
     implementAndIncludeTransitive("dev.luna5ama:kmogus-core:1.1-SNAPSHOT")
