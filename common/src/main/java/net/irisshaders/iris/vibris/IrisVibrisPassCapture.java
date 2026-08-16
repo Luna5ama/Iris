@@ -253,14 +253,33 @@ public final class IrisVibrisPassCapture implements AutoCloseable {
 		return failure.getCause() == null ? failure : failure.getCause();
 	}
 
-	public record PassHandle(ResourceCatalog.PassStage stage, String programId, int order) {
-		public PassHandle {
-			Objects.requireNonNull(stage, "stage");
-			Objects.requireNonNull(programId, "programId");
+	public static final class PassHandle {
+		private final ResourceCatalog.PassStage stage;
+		private final String programId;
+		private final int order;
+		private final String passId;
+
+		public PassHandle(ResourceCatalog.PassStage stage, String programId, int order) {
+			this.stage = Objects.requireNonNull(stage, "stage");
+			this.programId = Objects.requireNonNull(programId, "programId");
+			this.order = order;
+			this.passId = stage.getId() + "/" + programId;
+		}
+
+		public ResourceCatalog.PassStage stage() {
+			return stage;
+		}
+
+		public String programId() {
+			return programId;
+		}
+
+		public int order() {
+			return order;
 		}
 
 		public String passId() {
-			return stage.getId() + "/" + programId;
+			return passId;
 		}
 	}
 
