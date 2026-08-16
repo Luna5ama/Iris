@@ -398,8 +398,7 @@ public class CommonTransformer {
 
 	public static void addIfNotExists(Root root, ASTParser t, TranslationUnit tree, String name, Type type,
 									  StorageType storageType) {
-		if (root.externalDeclarationIndex.getStream(name)
-			.noneMatch((entry) -> entry.declaration() instanceof DeclarationExternalDeclaration)) {
+		if (!hasExternalDeclaration(root, name)) {
 			tree.injectNode(ASTInjectionPoint.BEFORE_DECLARATIONS, inputDeclarationTemplate.getInstanceFor(root,
 				new StorageQualifier(storageType),
 				new BuiltinNumericTypeSpecifier(type),
@@ -409,14 +408,18 @@ public class CommonTransformer {
 
 	public static void addIfNotExists(Root root, ASTParser t, TranslationUnit tree, String name, Type type,
 									  StorageType storageType, int location) {
-		if (root.externalDeclarationIndex.getStream(name)
-			.noneMatch((entry) -> entry.declaration() instanceof DeclarationExternalDeclaration)) {
+		if (!hasExternalDeclaration(root, name)) {
 			tree.injectNode(ASTInjectionPoint.BEFORE_DECLARATIONS, inputDeclarationTemplateLayout.getInstanceFor(root,
 				new LiteralExpression(Type.INT32, location),
 				new StorageQualifier(storageType),
 				new BuiltinNumericTypeSpecifier(type),
 				new Identifier(name)));
 		}
+	}
+
+	private static boolean hasExternalDeclaration(Root root, String name) {
+		return root.identifierIndex.getStream(name)
+			.anyMatch(identifier -> identifier.getAncestor(DeclarationExternalDeclaration.class) != null);
 	}
 
 	private record RenameTargetResult(DeclarationExternalDeclaration samplerDeclaration,

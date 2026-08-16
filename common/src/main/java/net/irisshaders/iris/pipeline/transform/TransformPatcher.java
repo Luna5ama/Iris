@@ -116,7 +116,7 @@ public class TransformPatcher {
 	static {
 		transformer = new EnumASTTransformer<>(PatchShaderType.class) {
 			{
-				setRootSupplier(RootSupplier.EXACT_UNORDERED_ED_EXACT);
+				setRootSupplier(RootSupplier.EXACT_UNORDERED);
 				setParsingCacheStrategy(ParsingCacheStrategy.TWO_TIER);
 				setParseLineDirectives(true);
 			}
