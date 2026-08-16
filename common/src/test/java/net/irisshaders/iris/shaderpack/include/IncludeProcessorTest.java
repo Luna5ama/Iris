@@ -12,6 +12,40 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 class IncludeProcessorTest {
 	@Test
+	void skipsRepeatedGuardedIncludesWithoutReaddingSourceRanges(@TempDir Path packRoot) throws Exception {
+		Path shaders = Files.createDirectories(packRoot.resolve("shaders/lib"));
+		Files.writeString(packRoot.resolve("shaders/main.csh"), """
+			#version 430
+			#include "/shaders/lib/common.glsl"
+			layout(local_size_x = 1) in;
+			#include "/shaders/lib/common.glsl"
+			void main() {}
+			""");
+		Files.writeString(shaders.resolve("common.glsl"), """
+			#ifndef COMMON_GLSL
+			#define COMMON_GLSL
+			const uint VALUE = 1u;
+			#endif
+			""");
+
+		AbsolutePackPath rootPath = AbsolutePackPath.fromAbsolutePath("/shaders/main.csh");
+		IncludeGraph graph = new IncludeGraph(packRoot, ImmutableList.of(rootPath), false);
+
+		assertEquals(
+			ImmutableList.of(
+				"#version 430",
+				"#ifndef COMMON_GLSL",
+				"#define COMMON_GLSL",
+				"const uint VALUE = 1u;",
+				"#endif",
+				"layout(local_size_x = 1) in;",
+				"void main() {}"
+			),
+			new IncludeProcessor(graph).getIncludedFile(rootPath)
+		);
+	}
+
+	@Test
 	void preservesPhysicalSourceLocationsWhenExpandingIncludes(@TempDir Path packRoot) throws Exception {
 		Path shaders = Files.createDirectories(packRoot.resolve("shaders/lib"));
 		Files.writeString(packRoot.resolve("shaders/main.fsh"), """

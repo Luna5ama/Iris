@@ -42,6 +42,7 @@ public class IncludeProcessor {
 
 			if (includeEntry != null) {
 				linesBuilder.addAll(fileNode.getSourceLines(rangeStart, i));
+				rangeStart = i + 1;
 				var includePath = includeEntry.path();
 				var subIncludedSet = includeEntry.conditional() ? new HashSet<>(includedSet) : includedSet;
 				if (!subIncludedSet.add(includePath)) {
@@ -51,7 +52,6 @@ public class IncludeProcessor {
 					}
 				}
 				process(includePath, subIncludedSet, linesBuilder);
-				rangeStart = i + 1;
 			}
 		}
 
