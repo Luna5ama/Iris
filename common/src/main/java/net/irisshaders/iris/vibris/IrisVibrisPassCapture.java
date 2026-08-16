@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,12 @@ public final class IrisVibrisPassCapture implements AutoCloseable {
 	}
 
 	ResourceCatalog resourceCatalog(Collection<ResourceCatalog.ResourceDescriptor> resources) {
+		Set<String> logicalNames = new HashSet<>();
+		for (ResourceCatalog.ResourceDescriptor resource : resources) {
+			if (!logicalNames.add(resource.logicalName())) {
+				throw new IllegalStateException("Duplicate Vibris resource logical name: " + resource.logicalName());
+			}
+		}
 		List<String> readable = resources.stream()
 			.filter(resource -> resource.kind() == ResourceCatalog.ResourceKind.TEXTURE ||
 				resource.kind() == ResourceCatalog.ResourceKind.BUFFER)

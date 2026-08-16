@@ -649,6 +649,9 @@ public class Iris {
 			try {
 				replacement = new IrisRenderingPipeline(programSet);
 			} catch (Exception exception) {
+				// IrisRenderingPipeline registers shader storage buffers before every program has
+				// compiled. If construction fails, no pipeline instance exists to destroy them.
+				ShaderStorageBufferHolder.forceDeleteBuffers();
 				handleException(exception);
 				logger.error("Failed to create the Vibris pipeline, restoring the previous pipeline.", exception);
 			} finally {

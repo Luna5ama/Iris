@@ -58,6 +58,15 @@ class IrisVibrisPassCaptureTest {
 	}
 
 	@Test
+	void duplicateLogicalResourcesFailBeforeBuildingPassDescriptors() {
+		IrisVibrisPassCapture capture = new IrisVibrisPassCapture(new FakeBackend());
+		IllegalStateException failure = assertThrows(
+			IllegalStateException.class,
+			() -> capture.resourceCatalog(List.of(texture(1), texture(1))));
+		assertEquals("Duplicate Vibris resource logical name: colortex0", failure.getMessage());
+	}
+
+	@Test
 	void exactBoundaryProducesOneShotReceiptAfterFlipSnapshot() {
 		FakeBackend backend = new FakeBackend();
 		IrisVibrisPassCapture capture = new IrisVibrisPassCapture(backend);
