@@ -158,8 +158,8 @@ public class FileNode {
 		return lines;
 	}
 
-	public SourceLine getSourceLine(int index) {
-		return sourceLines.get(index);
+	public ImmutableList<SourceLine> getSourceLines(int fromIndex, int toIndex) {
+		return sourceLines.subList(fromIndex, toIndex);
 	}
 
 	public ImmutableMap<Integer, IncludeEntry> getIncludes() {

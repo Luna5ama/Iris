@@ -35,11 +35,13 @@ public class IncludeProcessor {
 
 		ImmutableList<String> lines = fileNode.getLines();
 		var includes = fileNode.getIncludes();
+		int rangeStart = 0;
 
 		for (int i = 0; i < lines.size(); i++) {
 			var includeEntry = includes.get(i);
 
 			if (includeEntry != null) {
+				linesBuilder.addAll(fileNode.getSourceLines(rangeStart, i));
 				var includePath = includeEntry.path();
 				var subIncludedSet = includeEntry.conditional() ? new HashSet<>(includedSet) : includedSet;
 				if (!subIncludedSet.add(includePath)) {
@@ -49,9 +51,10 @@ public class IncludeProcessor {
 					}
 				}
 				process(includePath, subIncludedSet, linesBuilder);
-			} else {
-				linesBuilder.add(fileNode.getSourceLine(i));
+				rangeStart = i + 1;
 			}
 		}
+
+		linesBuilder.addAll(fileNode.getSourceLines(rangeStart, lines.size()));
 	}
 }
