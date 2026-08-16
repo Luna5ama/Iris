@@ -621,7 +621,7 @@ public class Iris {
 		try {
 			return reloadVibrisShaderpackInternal(requestOverrides);
 		} finally {
-			TransformPatcher.clearCaches();
+			TransformPatcher.clearParsingCaches();
 		}
 	}
 

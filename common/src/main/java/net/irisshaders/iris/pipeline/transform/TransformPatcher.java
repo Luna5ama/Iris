@@ -261,6 +261,10 @@ public class TransformPatcher {
 
 	public static void clearCaches() {
 		cache.clear();
+		clearParsingCaches();
+	}
+
+	public static void clearParsingCaches() {
 		transformer.setParsingCacheStrategy(EnumASTTransformer.ParsingCacheStrategy.TWO_TIER);
 		transformer.setBuildCache(new TypedTreeCache<>());
 		transformer.setTokenFilter(parseTokenFilter);

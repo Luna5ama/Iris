@@ -1,5 +1,7 @@
 package net.irisshaders.iris.shaderpack.preprocessor;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
 import net.irisshaders.iris.helpers.StringPair;
@@ -12,15 +14,16 @@ import org.anarres.cpp.Preprocessor;
 import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
-import java.lang.ref.SoftReference;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class JcppProcessor {
-	private static final ConcurrentHashMap<CacheKey, SoftReference<String>> CACHE = new ConcurrentHashMap<>();
+	private static final Cache<CacheKey, String> CACHE = CacheBuilder.newBuilder()
+		.maximumSize(1024)
+		.softValues()
+		.build();
 
 	// Derived from GlShader from Canvas, licenced under LGPL
 	public static String glslPreprocessSource(String source, List<StringPair> environmentDefines) {
@@ -32,26 +35,15 @@ public class JcppProcessor {
 	}
 
 	private static String glslPreprocessSource(String source, List<SourceLine> origins, List<StringPair> environmentDefines) {
-		if (CACHE.size() > 1024) {
-			CACHE.clear();
-			System.out.println("JCPP cache cleared");
-		}
-
 		var key = new CacheKey(
 			Hashing.sha512().hashString(source, StandardCharsets.UTF_8),
 			hashOrigins(origins),
 			environmentDefines
 		);
 
-		return CACHE.compute(key, (k, v) -> {
-			String cached = v == null ? null : v.get();
-			if (cached != null) {
-				return v;
-			} else {
-				String processed = glslPreprocessSourceUncached(source, origins, environmentDefines);
-				return new SoftReference<>(processed);
-			}
-		}).get();
+		return CACHE.asMap().compute(key, (k, cached) -> cached != null
+			? cached
+			: glslPreprocessSourceUncached(source, origins, environmentDefines));
 	}
 
 	// Derived from GlShader from Canvas, licenced under LGPL

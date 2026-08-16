@@ -1,5 +1,8 @@
 package net.irisshaders.iris.shaderpack.include;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -12,6 +15,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ShaderSourceMap {
+	private static final Cache<String, ShaderSourceMap> PARSE_CACHE = CacheBuilder.newBuilder()
+		.maximumSize(512)
+		.weakKeys()
+		.softValues()
+		.build();
 	private static final String METADATA_PREFIX = "// IRIS_SOURCE ";
 	private static final Pattern METADATA_PATTERN = Pattern.compile(
 		"(?m)^// IRIS_SOURCE (\\d+) ([A-Za-z0-9_-]+)\\R?");
@@ -25,10 +33,20 @@ public final class ShaderSourceMap {
 
 	private ShaderSourceMap(String sourceWithoutMetadata, Map<Integer, String> sourcePaths) {
 		this.sourceWithoutMetadata = sourceWithoutMetadata;
-		this.sourcePaths = Collections.unmodifiableMap(new TreeMap<>(sourcePaths));
+		this.sourcePaths = sourcePaths.isEmpty()
+			? Map.of()
+			: Collections.unmodifiableMap(new TreeMap<>(sourcePaths));
 	}
 
 	public static ShaderSourceMap parse(String source) {
+		if (!containsReservedMarker(source)) {
+			return new ShaderSourceMap(source, Map.of());
+		}
+		ShaderSourceMap cached = PARSE_CACHE.getIfPresent(source);
+		if (cached != null) {
+			return cached;
+		}
+
 		Matcher matcher = METADATA_PATTERN.matcher(source);
 		Map<Integer, String> sourcePaths = new TreeMap<>();
 		StringBuilder stripped = new StringBuilder();
@@ -39,7 +57,9 @@ public final class ShaderSourceMap {
 			matcher.appendReplacement(stripped, "");
 		}
 		matcher.appendTail(stripped);
-		return new ShaderSourceMap(stripped.toString(), sourcePaths);
+		ShaderSourceMap parsed = new ShaderSourceMap(stripped.toString(), sourcePaths);
+		PARSE_CACHE.put(source, parsed);
+		return parsed;
 	}
 
 	public static boolean containsReservedMarker(String source) {

@@ -10,6 +10,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransformPatcherCacheTest {
@@ -24,6 +25,34 @@ class TransformPatcherCacheTest {
 			.anyMatch(field -> field.getType() == String.class));
 		assertTrue(Arrays.stream(cacheKey.getDeclaredFields())
 			.anyMatch(field -> field.getType() == HashCode.class));
+	}
+
+	@Test
+	void clearParsingCachesRetainsTransformResultsButDropsParserAndAstState() throws Exception {
+		Field cacheField = TransformPatcher.class.getDeclaredField("cache");
+		cacheField.setAccessible(true);
+		@SuppressWarnings("unchecked")
+		Map<Object, Object> cache = (Map<Object, Object>) cacheField.get(null);
+		Object key = new Object();
+		Object value = new Object();
+		cache.put(key, value);
+
+		Field transformerField = TransformPatcher.class.getDeclaredField("transformer");
+		transformerField.setAccessible(true);
+		Object transformer = transformerField.get(null);
+		Field parserField = ASTParser.class.getDeclaredField("parser");
+		parserField.setAccessible(true);
+		Field buildCacheField = ASTParser.class.getDeclaredField("buildCache");
+		buildCacheField.setAccessible(true);
+		Object parser = parserField.get(transformer);
+		Object buildCache = buildCacheField.get(transformer);
+
+		TransformPatcher.clearParsingCaches();
+
+		assertSame(value, cache.get(key));
+		assertNotSame(parser, parserField.get(transformer));
+		assertNotSame(buildCache, buildCacheField.get(transformer));
+		TransformPatcher.clearCaches();
 	}
 
 	@Test

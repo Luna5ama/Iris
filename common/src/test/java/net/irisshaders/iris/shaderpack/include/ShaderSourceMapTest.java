@@ -6,8 +6,23 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class ShaderSourceMapTest {
+	@Test
+	void preservesUnmappedSourceWithoutCopyingIt() {
+		String source = new String("#version 330\nvoid main() {}\n");
+
+		assertSame(source, ShaderSourceMap.parse(source).sourceWithoutMetadata());
+	}
+
+	@Test
+	void reusesParsedMetadataForTheSameSourceInstance() {
+		String source = ShaderSourceMap.appendMetadata("#version 330\n", Map.of(1, "/shaders/main.fsh"));
+
+		assertSame(ShaderSourceMap.parse(source), ShaderSourceMap.parse(source));
+	}
+
 	@Test
 	void rewritesCommonDriverLocationsAndRemovesMetadataBeforeCompilation() {
 		String source = ShaderSourceMap.appendMetadata("#version 330\nvoid main() {}\n", Map.of(
