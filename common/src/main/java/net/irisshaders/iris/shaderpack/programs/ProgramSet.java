@@ -21,6 +21,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.RecursiveTask;
 import java.util.function.Function;
@@ -34,15 +35,17 @@ public class ProgramSet implements ProgramSetInterface {
 	private final ComputeSource[] setup;
 
 	private final ShaderPack pack;
+	private final Set<String> availableSourcePaths;
 
 	private final EnumMap<ProgramId, ProgramSource> gbufferPrograms = new EnumMap<>(ProgramId.class);
 	private final EnumMap<ProgramArrayId, ProgramSource[]> compositePrograms = new EnumMap<>(ProgramArrayId.class);
 	private final EnumMap<ProgramArrayId, ComputeSource[][]> computePrograms = new EnumMap<>(ProgramArrayId.class);
 
 	public ProgramSet(AbsolutePackPath directory, Function<AbsolutePackPath, String> sourceProvider,
-					  ShaderProperties shaderProperties, ShaderPack pack) {
+					  Set<String> availableSourcePaths, ShaderProperties shaderProperties, ShaderPack pack) {
 		this.packDirectives = new PackDirectives(PackRenderTargetDirectives.BASELINE_SUPPORTED_RENDER_TARGETS, shaderProperties);
 		this.pack = pack;
+		this.availableSourcePaths = availableSourcePaths;
 
 		// Note: Ensure that blending is properly overridden during the shadow pass. By default, blending is disabled
 		//       in the shadow pass. Shader packs expect this for colored shadows from stained glass and nether portals
@@ -59,8 +62,12 @@ public class ProgramSet implements ProgramSetInterface {
 		ProgramArrayId[] programArrayIds = ProgramArrayId.values();
 		ProgramId[] programIds = ProgramId.values();
 
-		ForkJoinTask<ComputeSource[]> readShadowComputeTask = new ReadComputeArrayTask(directory, sourceProvider, "shadow", shaderProperties).fork();
-		ForkJoinTask<ComputeSource[]> readSetupTask = new ReadComputeProgramArrayTask(directory, sourceProvider, "setup", shaderProperties).fork();
+		ForkJoinTask<ComputeSource[]> readShadowComputeTask = hasComputeArray(directory, "shadow")
+			? new ReadComputeArrayTask(directory, sourceProvider, "shadow", shaderProperties).fork()
+			: null;
+		ForkJoinTask<ComputeSource[]> readSetupTask = hasComputeProgramArray(directory, "setup")
+			? new ReadComputeProgramArrayTask(directory, sourceProvider, "setup", shaderProperties).fork()
+			: null;
 
 		EnumMap<ProgramArrayId, ForkJoinTask<ProgramSource[]>> readCompositeProgramTask = new EnumMap<>(ProgramArrayId.class);
 		EnumMap<ProgramArrayId, ForkJoinTask<ComputeSource[]>[]> readComputeProgramTask = new EnumMap<>(ProgramArrayId.class);
@@ -70,21 +77,28 @@ public class ProgramSet implements ProgramSetInterface {
 			readCompositeProgramTask.put(id, sources);
 			ForkJoinTask<ComputeSource[]>[] computes = new ForkJoinTask[id.getNumPrograms()];
 			for (int i = 0; i < id.getNumPrograms(); i++) {
-				computes[i] = new ReadComputeArrayTask(directory, sourceProvider, id.getSourcePrefix() + (i == 0 ? "" : i), shaderProperties).fork();
+				String name = id.getSourcePrefix() + (i == 0 ? "" : i);
+				if (hasComputeArray(directory, name)) {
+					computes[i] = new ReadComputeArrayTask(directory, sourceProvider, name, shaderProperties).fork();
+				}
 			}
 			readComputeProgramTask.put(id, computes);
 		}
 
 		ForkJoinTask<ProgramSource>[] readGbufferProgramTasks = new ForkJoinTask[programIds.length];
 		for (ProgramId programId : programIds) {
-			readGbufferProgramTasks[programId.ordinal()] = new ReadProgramSourceTask(directory, sourceProvider, programId.getSourceName(), shaderProperties, programId.getBlendModeOverride(), readTesselation).fork();
+			if (hasProgramSource(directory, programId.getSourceName(), readTesselation)) {
+				readGbufferProgramTasks[programId.ordinal()] = new ReadProgramSourceTask(directory, sourceProvider, programId.getSourceName(), shaderProperties, programId.getBlendModeOverride(), readTesselation).fork();
+			}
 		}
 
-		ForkJoinTask<ComputeSource[]> readFinalComputeTask = new ReadComputeArrayTask(directory, sourceProvider, "final", shaderProperties).fork();
+		ForkJoinTask<ComputeSource[]> readFinalComputeTask = hasComputeArray(directory, "final")
+			? new ReadComputeArrayTask(directory, sourceProvider, "final", shaderProperties).fork()
+			: null;
 
 
-		this.shadowCompute = readShadowComputeTask.join();
-		this.setup = readSetupTask.join();
+		this.shadowCompute = readShadowComputeTask == null ? new ComputeSource[0] : readShadowComputeTask.join();
+		this.setup = readSetupTask == null ? new ComputeSource[100] : readSetupTask.join();
 
 		for (ProgramArrayId id : ProgramArrayId.values()) {
 			ProgramSource[] sources = readCompositeProgramTask.get(id).join();
@@ -93,7 +107,7 @@ public class ProgramSet implements ProgramSetInterface {
 			boolean hasNoComputes = true;
 			ForkJoinTask<ComputeSource[]>[] tasks = readComputeProgramTask.get(id);
 			for (int i = 0; i < id.getNumPrograms(); i++) {
-				computes[i] = tasks[i].join();
+				computes[i] = tasks[i] == null ? new ComputeSource[0] : tasks[i].join();
 				if (computes[i].length > 0) {
 					hasNoComputes = false;
 				}
@@ -102,10 +116,13 @@ public class ProgramSet implements ProgramSetInterface {
 		}
 
 		for (ProgramId id : programIds) {
-			gbufferPrograms.put(id, readGbufferProgramTasks[id.ordinal()].join());
+			ForkJoinTask<ProgramSource> task = readGbufferProgramTasks[id.ordinal()];
+			gbufferPrograms.put(id, task == null
+				? emptyProgramSource(id.getSourceName(), shaderProperties, id.getBlendModeOverride())
+				: task.join());
 		}
 
-		this.finalCompute = readFinalComputeTask.join();
+		this.finalCompute = readFinalComputeTask == null ? new ComputeSource[0] : readFinalComputeTask.join();
 
 		locateDirectives();
 	}
@@ -134,13 +151,18 @@ public class ProgramSet implements ProgramSetInterface {
 
 			for (int i = 0; i < tasks.length; i++) {
 				String suffix = i == 0 ? "" : Integer.toString(i);
+				String program = name + suffix;
 
-				tasks[i] = new ReadComputeSourceTask(directory, sourceProvider, name + suffix, properties).fork();
+				if (hasComputeSource(directory, program)) {
+					tasks[i] = new ReadComputeSourceTask(directory, sourceProvider, program, properties).fork();
+				}
 			}
 
 			ComputeSource[] programs = new ComputeSource[100];
 			for (int i = 0; i < tasks.length; i++) {
-				programs[i] = tasks[i].join();
+				if (tasks[i] != null) {
+					programs[i] = tasks[i].join();
+				}
 			}
 
 			return programs;
@@ -178,13 +200,19 @@ public class ProgramSet implements ProgramSetInterface {
 
 			for (int i = 0; i < tasks.length; i++) {
 				String suffix = i == 0 ? "" : Integer.toString(i);
+				String program = name + suffix;
 
-				tasks[i] = new ReadProgramSourceTask(directory, sourceProvider, name + suffix, shaderProperties, blendModeOverride, readTesselation).fork();
+				if (hasProgramSource(directory, program, readTesselation)) {
+					tasks[i] = new ReadProgramSourceTask(directory, sourceProvider, program, shaderProperties, blendModeOverride, readTesselation).fork();
+				}
 			}
 
 			ProgramSource[] programs = new ProgramSource[100];
 			for (int i = 0; i < tasks.length; i++) {
-				programs[i] = tasks[i].join();
+				String suffix = i == 0 ? "" : Integer.toString(i);
+				programs[i] = tasks[i] == null
+					? emptyProgramSource(name + suffix, shaderProperties, blendModeOverride)
+					: tasks[i].join();
 			}
 
 			return programs;
@@ -215,15 +243,24 @@ public class ProgramSet implements ProgramSetInterface {
 
 			for (char c = 'a'; c <= 'z'; ++c) {
 				String suffix = "_" + c;
+				String program = name + suffix;
 
-				tasks[c - 97] = new ReadComputeSourceTask(directory, sourceProvider, name + suffix, properties).fork();
+				if (hasComputeSource(directory, program)) {
+					tasks[c - 97] = new ReadComputeSourceTask(directory, sourceProvider, program, properties).fork();
+				}
 			}
 
 			ComputeSource[] programs = new ComputeSource[27];
-			programs[0] = new ReadComputeSourceTask(directory, sourceProvider, name, properties).compute();
+			if (hasComputeSource(directory, name)) {
+				programs[0] = new ReadComputeSourceTask(directory, sourceProvider, name, properties).compute();
+			}
 
 			for (int i = 1; i < 27; i++) {
-				programs[i] = tasks[i - 1].join();
+				ForkJoinTask<ComputeSource> task = tasks[i - 1];
+				if (task == null) {
+					break;
+				}
+				programs[i] = task.join();
 				if (programs[i] == null) {
 					break;
 				}
@@ -235,6 +272,52 @@ public class ProgramSet implements ProgramSetInterface {
 
 			return programs;
 		}
+	}
+
+	private boolean hasProgramSource(AbsolutePackPath directory, String program, boolean readTesselation) {
+		return hasSource(directory, program + ".vsh")
+			|| hasSource(directory, program + ".gsh")
+			|| readTesselation && (hasSource(directory, program + ".tcs")
+			|| hasSource(directory, program + ".tes"))
+			|| hasSource(directory, program + ".fsh");
+	}
+
+	private boolean hasComputeSource(AbsolutePackPath directory, String program) {
+		return hasSource(directory, program + ".csh");
+	}
+
+	private boolean hasSource(AbsolutePackPath directory, String fileName) {
+		String directoryPath = directory.getPathString();
+		return availableSourcePaths.contains((directoryPath.equals("/") ? "" : directoryPath) + "/" + fileName);
+	}
+
+	private boolean hasComputeArray(AbsolutePackPath directory, String program) {
+		if (hasComputeSource(directory, program)) {
+			return true;
+		}
+
+		for (char suffix = 'a'; suffix <= 'z'; suffix++) {
+			if (hasComputeSource(directory, program + "_" + suffix)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private boolean hasComputeProgramArray(AbsolutePackPath directory, String program) {
+		for (int i = 0; i < 100; i++) {
+			if (hasComputeSource(directory, program + (i == 0 ? "" : i))) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private ProgramSource emptyProgramSource(String program, ShaderProperties properties,
+										 BlendModeOverride defaultBlendModeOverride) {
+		return new ProgramSource(program, null, null, null, null, null, this, properties, defaultBlendModeOverride);
 	}
 
 	private class ReadProgramSourceTask extends RecursiveTask<ProgramSource> {

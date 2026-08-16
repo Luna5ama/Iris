@@ -93,6 +93,7 @@ public class ShaderPack {
 	private final List<ImageInformation> irisCustomImages;
 	private final Set<FeatureFlags> activeFeatures;
 	private final Function<AbsolutePackPath, String> sourceProvider;
+	private final Set<String> availableSourcePaths;
 	private final ShaderProperties shaderProperties;
 	private final List<String> dimensionIds;
 	private final Int2ObjectArrayMap<BuiltShaderStorageInfo> bufferObjects;
@@ -298,6 +299,9 @@ public class ShaderPack {
 
 		// Prepare our include processor
 		IncludeProcessor includeProcessor = new IncludeProcessor(graph);
+		this.availableSourcePaths = graph.getNodes().keySet().stream()
+			.map(AbsolutePackPath::getPathString)
+			.collect(Collectors.toUnmodifiableSet());
 
 		// Set up our source provider for creating ProgramSets
 		List<StringPair> finalEnvironmentDefines1 = environmentDefines;
@@ -327,7 +331,7 @@ public class ShaderPack {
 			return JcppProcessor.glslPreprocessSource(includedSource, finalEnvironmentDefines1);
 		};
 
-		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + dimensionMap.getOrDefault(new NamespacedId("*", "*"), "")), sourceProvider, shaderProperties, this);
+		this.base = new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + dimensionMap.getOrDefault(new NamespacedId("*", "*"), "")), sourceProvider, availableSourcePaths, shaderProperties, this);
 
 		this.overrides = new HashMap<>();
 
@@ -477,10 +481,10 @@ public class ShaderPack {
 	@Nullable
 	private static ProgramSet loadOverrides(
 		boolean has, AbsolutePackPath path, Function<AbsolutePackPath, String> sourceProvider,
-		ShaderProperties shaderProperties, ShaderPack pack
+		Set<String> availableSourcePaths, ShaderProperties shaderProperties, ShaderPack pack
 	) {
 		if (has) {
-			return new ProgramSet(path, sourceProvider, shaderProperties, pack);
+			return new ProgramSet(path, sourceProvider, availableSourcePaths, shaderProperties, pack);
 		}
 
 		return null;
@@ -631,7 +635,7 @@ public class ShaderPack {
 			if (dimensionMap.containsKey(dimension)) {
 				String name = dimensionMap.get(dimension);
 				if (dimensionIds.contains(name)) {
-					return new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + name), sourceProvider, shaderProperties, this);
+					return new ProgramSet(AbsolutePackPath.fromAbsolutePath("/" + name), sourceProvider, availableSourcePaths, shaderProperties, this);
 				} else {
 					Iris.logger.error("Attempted to load dimension folder " + name + " for dimension " + dimension + ", but it does not exist!");
 					return ProgramSetInterface.Empty.INSTANCE;

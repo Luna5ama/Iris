@@ -162,10 +162,11 @@ public class IncludeGraph {
 
 	private void detectCycle() {
 		List<AbsolutePackPath> cycle = new ArrayList<>();
-		Set<AbsolutePackPath> visited = new HashSet<>();
+		Set<AbsolutePackPath> visiting = new HashSet<>();
+		Set<AbsolutePackPath> completed = new HashSet<>();
 
 		for (AbsolutePackPath start : nodes.keySet()) {
-			if (exploreForCycles(start, cycle, visited)) {
+			if (exploreForCycles(start, cycle, visiting, completed)) {
 				AbsolutePackPath lastFilePath = null;
 
 				StringBuilder error = new StringBuilder();
@@ -216,14 +217,19 @@ public class IncludeGraph {
 		}
 	}
 
-	private boolean exploreForCycles(AbsolutePackPath frontier, List<AbsolutePackPath> path, Set<AbsolutePackPath> visited) {
-		if (visited.contains(frontier)) {
+	private boolean exploreForCycles(AbsolutePackPath frontier, List<AbsolutePackPath> path,
+									 Set<AbsolutePackPath> visiting, Set<AbsolutePackPath> completed) {
+		if (completed.contains(frontier)) {
+			return false;
+		}
+
+		if (visiting.contains(frontier)) {
 			path.add(frontier);
 			return true;
 		}
 
 		path.add(frontier);
-		visited.add(frontier);
+		visiting.add(frontier);
 
 		for (var includeEntry : nodes.get(frontier).getIncludes().values()) {
 			var included = includeEntry.path();
@@ -232,13 +238,14 @@ public class IncludeGraph {
 				continue;
 			}
 
-			if (exploreForCycles(included, path, visited)) {
+			if (exploreForCycles(included, path, visiting, completed)) {
 				return true;
 			}
 		}
 
 		path.removeLast();
-		visited.remove(frontier);
+		visiting.remove(frontier);
+		completed.add(frontier);
 
 		return false;
 	}
