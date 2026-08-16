@@ -7,17 +7,27 @@ import java.util.Optional;
 public class ConstDirectiveParser {
 	public static List<ConstDirective> findDirectives(String source) {
 		List<ConstDirective> directives = new ArrayList<>();
-
-		// Match any valid newline sequence
-		// https://stackoverflow.com/a/31060125
-		for (String line : source.split("\\R")) {
-			findDirectiveInLine(line).ifPresent(directives::add);
+		int lineStart = 0;
+		for (int index = 0; index <= source.length(); index++) {
+			if (index < source.length() && !isLineBreak(source.charAt(index))) {
+				continue;
+			}
+			findDirectiveInRange(source, lineStart, index).ifPresent(directives::add);
+			if (index < source.length() && source.charAt(index) == '\r'
+				&& index + 1 < source.length() && source.charAt(index + 1) == '\n') {
+				index++;
+			}
+			lineStart = index + 1;
 		}
 
 		return directives;
 	}
 
 	public static Optional<ConstDirective> findDirectiveInLine(String line) {
+		return findDirectiveInRange(line, 0, line.length());
+	}
+
+	private static Optional<ConstDirective> findDirectiveInRange(String source, int start, int end) {
 		// Valid const directives contain the following elements:
 		// * Zero or more whitespace characters
 		// * A "const" literal
@@ -35,108 +45,127 @@ public class ConstDirectiveParser {
 		// Bail-out early without doing any processing if required components are not found
 		// A const directive must contain at the very least a const keyword, then an equals
 		// sign, then a semicolon.
-		if (!line.contains("const") || !line.contains("=") || !line.contains(";")) {
-			return Optional.empty();
-		}
-
 		// Trim any surrounding whitespace (such as indentation) from the line before processing it.
-		line = line.trim();
+		start = trimStart(source, start, end);
+		end = trimEnd(source, start, end);
 
 		// A valid declaration must have a trimmed line starting with const
-		if (!line.startsWith("const")) {
+		if (!source.regionMatches(start, "const", 0, "const".length())) {
 			return Optional.empty();
 		}
 
 		// Remove the const part from the string
-		line = line.substring("const".length());
+		start += "const".length();
 
 		// There must be at least one whitespace character between the "const" keyword and the type keyword
-		if (!startsWithWhitespace(line)) {
+		if (!startsWithWhitespace(source, start, end)) {
 			return Optional.empty();
 		}
 
 		// Trim all whitespace between the const keyword and the type keyword
-		line = line.trim();
+		start = trimStart(source, start, end);
+		end = trimEnd(source, start, end);
 
 		// Valid const declarations have a type that is either an int, a float, a vec4, or a bool.
 		Type type;
 
-		if (line.startsWith("int")) {
+		if (source.regionMatches(start, "int", 0, "int".length())) {
 			type = Type.INT;
-			line = line.substring("int".length());
-		} else if (line.startsWith("float")) {
+			start += "int".length();
+		} else if (source.regionMatches(start, "float", 0, "float".length())) {
 			type = Type.FLOAT;
-			line = line.substring("float".length());
-		} else if (line.startsWith("vec2")) {
+			start += "float".length();
+		} else if (source.regionMatches(start, "vec2", 0, "vec2".length())) {
 			type = Type.VEC2;
-			line = line.substring("vec2".length());
-		} else if (line.startsWith("ivec3")) {
+			start += "vec2".length();
+		} else if (source.regionMatches(start, "ivec3", 0, "ivec3".length())) {
 			type = Type.IVEC3;
-			line = line.substring("ivec3".length());
-		} else if (line.startsWith("vec4")) {
+			start += "ivec3".length();
+		} else if (source.regionMatches(start, "vec4", 0, "vec4".length())) {
 			type = Type.VEC4;
-			line = line.substring("vec4".length());
-		} else if (line.startsWith("bool")) {
+			start += "vec4".length();
+		} else if (source.regionMatches(start, "bool", 0, "bool".length())) {
 			type = Type.BOOL;
-			line = line.substring("bool".length());
+			start += "bool".length();
 		} else {
 			return Optional.empty();
 		}
 
 		// There must be at least one whitespace character between the type keyword and the key of the const declaration
-		if (!startsWithWhitespace(line)) {
+		if (!startsWithWhitespace(source, start, end)) {
 			return Optional.empty();
 		}
 
 		// Split the declaration at the equals sign
-		int equalsIndex = line.indexOf('=');
+		int equalsIndex = source.indexOf('=', start);
 
-		if (equalsIndex == -1) {
+		if (equalsIndex == -1 || equalsIndex >= end) {
 			// No equals sign found, not a valid const declaration
 			return Optional.empty();
 		}
 
 		// The key comes before the equals sign
-		String key = line.substring(0, equalsIndex).trim();
+		int keyStart = trimStart(source, start, equalsIndex);
+		int keyEnd = trimEnd(source, keyStart, equalsIndex);
 
 		// The key must be a "word" (alphanumeric & underscore characters)
-		if (!isWord(key)) {
+		if (!isWord(source, keyStart, keyEnd)) {
 			return Optional.empty();
 		}
 
 		// Everything after the equals sign but before the semicolon is the value
-		String remaining = line.substring(equalsIndex + 1);
+		int semicolonIndex = source.indexOf(';', equalsIndex + 1);
 
-		int semicolonIndex = remaining.indexOf(';');
-
-		if (semicolonIndex == -1) {
+		if (semicolonIndex == -1 || semicolonIndex >= end) {
 			// No semicolon found, not a valid const declaration
 			return Optional.empty();
 		}
 
-		String value = remaining.substring(0, semicolonIndex).trim();
+		int valueStart = trimStart(source, equalsIndex + 1, semicolonIndex);
+		int valueEnd = trimEnd(source, valueStart, semicolonIndex);
 
 		// We make no attempt to properly parse / verify the value here, that responsibility lies with whatever code
 		// is working with the directives.
-		return Optional.of(new ConstDirective(type, key, value));
+		return Optional.of(new ConstDirective(type,
+			source.substring(keyStart, keyEnd), source.substring(valueStart, valueEnd)));
 	}
 
-	private static boolean startsWithWhitespace(String text) {
-		return !text.isEmpty() && Character.isWhitespace(text.charAt(0));
+	private static boolean startsWithWhitespace(String source, int start, int end) {
+		return start < end && Character.isWhitespace(source.charAt(start));
 	}
 
-	private static boolean isWord(String text) {
-		if (text.isEmpty()) {
+	private static int trimStart(String source, int start, int end) {
+		while (start < end && source.charAt(start) <= ' ') {
+			start++;
+		}
+		return start;
+	}
+
+	private static int trimEnd(String source, int start, int end) {
+		while (end > start && source.charAt(end - 1) <= ' ') {
+			end--;
+		}
+		return end;
+	}
+
+	private static boolean isWord(String source, int start, int end) {
+		if (start == end) {
 			return false;
 		}
 
-		for (char character : text.toCharArray()) {
+		for (int index = start; index < end; index++) {
+			char character = source.charAt(index);
 			if (!Character.isDigit(character) && !Character.isAlphabetic(character) && character != '_') {
 				return false;
 			}
 		}
 
 		return true;
+	}
+
+	private static boolean isLineBreak(char character) {
+		return character == '\n' || character == '\u000B' || character == '\f' || character == '\r'
+			|| character == '\u0085' || character == '\u2028' || character == '\u2029';
 	}
 
 	public enum Type {
