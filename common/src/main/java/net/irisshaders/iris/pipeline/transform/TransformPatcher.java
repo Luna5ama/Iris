@@ -1,5 +1,7 @@
 package net.irisshaders.iris.pipeline.transform;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
@@ -98,6 +100,10 @@ public class TransformPatcher {
 	};
 	private static final boolean useCache = true;
 	private static final Map<CacheKey, SoftReference<Map<PatchShaderType, String>>> cache = new LRUCache<>(256);
+	private static final Cache<String, HashCode> SOURCE_HASH_CACHE = CacheBuilder.newBuilder()
+		.maximumSize(2048)
+		.weakKeys()
+		.build();
 	private static final List<String> internalPrefixes = List.of("iris_", "irisMain", "moj_import");
 	private static final int IRIS_GENERATED_SOURCE_ID = 1_000_000_000;
 	private static final String IRIS_GENERATED_SOURCE_NAME = "<Iris-generated shader code>";
@@ -449,10 +455,20 @@ public class TransformPatcher {
 					hasher.putInt(-1);
 				} else {
 					hasher.putInt(source.length());
-					hasher.putUnencodedChars(source);
+					hasher.putBytes(hashSource(source).asBytes());
 				}
 			}
 			return hasher.hash();
+		}
+
+		private static HashCode hashSource(String source) {
+			HashCode cached = SOURCE_HASH_CACHE.getIfPresent(source);
+			if (cached != null) {
+				return cached;
+			}
+			HashCode hash = Hashing.sha256().hashUnencodedChars(source);
+			SOURCE_HASH_CACHE.put(source, hash);
+			return hash;
 		}
 	}
 }
