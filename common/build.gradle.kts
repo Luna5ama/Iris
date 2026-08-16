@@ -64,13 +64,13 @@ dependencies {
 
     modImplementation(SODIUM_DEPENDENCY_FABRIC)
     modCompileOnly("org.antlr:antlr4-runtime:4.13.1")
-    modCompileOnly("io.github.douira:glsl-transformer:3.0.0-pre3-iris4")
+    modCompileOnly("io.github.douira:glsl-transformer:3.0.0-pre3-iris5")
     modCompileOnly("org.anarres:jcpp:1.4.14")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.anarres:jcpp:1.4.14")
-    testImplementation("io.github.douira:glsl-transformer:3.0.0-pre3-iris4")
+    testImplementation("io.github.douira:glsl-transformer:3.0.0-pre3-iris5")
     testImplementation("dev.luna5ama:vibris-capture")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
