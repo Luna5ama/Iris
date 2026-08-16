@@ -5,6 +5,7 @@ import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import io.github.douira.glsl_transformer.GLSLLexer;
 import io.github.douira.glsl_transformer.ast.data.TypedTreeCache;
+import io.github.douira.glsl_transformer.ast.node.Identifier;
 import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
 import io.github.douira.glsl_transformer.ast.node.Version;
@@ -107,7 +108,7 @@ public class TransformPatcher {
 	static {
 		transformer = new EnumASTTransformer<>(PatchShaderType.class) {
 			{
-				setRootSupplier(RootSupplier.PREFIX_UNORDERED_ED_EXACT);
+				setRootSupplier(RootSupplier.EXACT_UNORDERED_ED_EXACT);
 				setParsingCacheStrategy(ParsingCacheStrategy.TWO_TIER);
 				setParseLineDirectives(true);
 			}
@@ -138,8 +139,8 @@ public class TransformPatcher {
 				Root root = tree.getRoot();
 
 				// check for illegal references to internal Iris shader interfaces
-				internalPrefixes.stream()
-					.flatMap(root.getPrefixIdentifierIndex()::prefixQueryFlat)
+				root.nodeIndex.get(Identifier.class).stream()
+					.filter(identifier -> hasAnyPrefix(identifier.getName(), internalPrefixes))
 					.findAny()
 					.ifPresent(id -> {
 						throw new IllegalArgumentException(
@@ -257,6 +258,15 @@ public class TransformPatcher {
 			ShaderPrinter.printProgram("errored_" + name).addSources(inputs).print();
 			throw new ShaderCompileException(name, e);
 		}
+	}
+
+	private static boolean hasAnyPrefix(String value, List<String> prefixes) {
+		for (String prefix : prefixes) {
+			if (value.startsWith(prefix)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public static void clearCaches() {

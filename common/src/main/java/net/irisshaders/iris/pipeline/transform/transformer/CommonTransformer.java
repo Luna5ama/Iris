@@ -383,12 +383,17 @@ public class CommonTransformer {
 		int minimum,
 		int maximum) {
 		root.replaceReferenceExpressions(t,
-			root.getPrefixIdentifierIndex().prefixQueryFlat("gl_MultiTexCoord")
+			identifiersByPrefix(root, "gl_MultiTexCoord")
 				.filter(id -> {
 					int index = Integer.parseInt(id.getName().substring("gl_MultiTexCoord".length()));
 					return index >= minimum && index <= maximum;
 				}),
 			"vec4(0.0, 0.0, 0.0, 1.0)");
+	}
+
+	public static Stream<Identifier> identifiersByPrefix(Root root, String prefix) {
+		return root.nodeIndex.get(Identifier.class).stream()
+			.filter(identifier -> identifier.getName().startsWith(prefix));
 	}
 
 	public static void addIfNotExists(Root root, ASTParser t, TranslationUnit tree, String name, Type type,

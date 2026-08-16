@@ -416,7 +416,7 @@ public class CompatibilityTransformer {
 			Root prevRoot = prevTree.getRoot();
 
 			// test if the prefix tag is used for some reason
-			if (prevRoot.getPrefixIdentifierIndex().prefixQueryFlat(tagPrefix).findAny().isPresent()) {
+			if (CommonTransformer.identifiersByPrefix(prevRoot, tagPrefix).findAny().isPresent()) {
 				LOGGER.warn("The prefix tag " + tagPrefix + " is used in the shader, bailing compatibility transformation.");
 				return;
 			}
