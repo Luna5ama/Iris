@@ -392,20 +392,13 @@ public class ShaderPack {
 					@Override
 					protected void compute() {
 
-						shaderProperties.getIrisCustomTextures().object2ObjectEntrySet().parallelStream()
-							.map(entry -> {
-								var name = entry.getKey();
-								var texture = entry.getValue();
-								try {
-									return Pair.of(name, readTexture(root, texture));
-								} catch (IOException e) {
-									Iris.logger.error("Unable to read the custom texture at " + texture.getName(), e);
-									return null;
-								}
-							})
-							.filter(Objects::nonNull)
-							.sequential()
-							.forEach(pair -> irisCustomTextureDataMap.put(pair.first(), pair.second()));
+						shaderProperties.getIrisCustomTextures().forEach((name, texture) -> {
+							try {
+								irisCustomTextureDataMap.put(name, readTexture(root, texture));
+							} catch (IOException e) {
+								Iris.logger.error("Unable to read the custom texture at " + texture.getName(), e);
+							}
+						});
 					}
 				}.fork();
 
