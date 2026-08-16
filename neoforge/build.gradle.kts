@@ -140,7 +140,7 @@ dependencies {
 
     compileOnly(SODIUM_DEPENDENCY_NEO)
     runtimeOnly(SODIUM_DEPENDENCY_NEO)
-    includeAdditional("io.github.douira:glsl-transformer:3.0.0-pre3-iris11")
+    includeAdditional("io.github.douira:glsl-transformer:3.0.0-pre3-iris12")
     includeAdditional("org.anarres:jcpp:1.4.14")
     includeAdditional("org.antlr:antlr4-runtime:4.13.1")
 }
