@@ -11,11 +11,31 @@ import java.util.EnumMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransformPatcherSourceMapTest {
+	@Test
+	void checksEachUniqueIdentifierNameForInternalPrefixes() {
+		var tree = new ASTParser().parseTranslationUnit(RootSupplier.EXACT_UNORDERED, """
+			#version 330
+			void main() {
+				vec4 allowed = vec4(0.0);
+				iris_internal = allowed + allowed + allowed;
+			}
+			""");
+
+		assertEquals("iris_internal", TransformPatcher.findInternalIdentifier(tree.getRoot()));
+
+		var allowedTree = new ASTParser().parseTranslationUnit(RootSupplier.EXACT_UNORDERED, """
+			#version 330
+			void main() { vec4 allowed = vec4(0.0); }
+			""");
+		assertNull(TransformPatcher.findInternalIdentifier(allowedTree.getRoot()));
+	}
+
 	@Test
 	void marksOnlyGeneratedDeclarationsAndStatementsWithOneSharedLocation() {
 		var tree = new ASTParser().parseTranslationUnit(RootSupplier.EXACT_UNORDERED_ED_EXACT, """

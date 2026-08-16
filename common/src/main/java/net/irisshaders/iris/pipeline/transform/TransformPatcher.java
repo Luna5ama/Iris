@@ -7,7 +7,6 @@ import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import io.github.douira.glsl_transformer.GLSLLexer;
 import io.github.douira.glsl_transformer.ast.data.TypedTreeCache;
-import io.github.douira.glsl_transformer.ast.node.Identifier;
 import io.github.douira.glsl_transformer.ast.node.Profile;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
 import io.github.douira.glsl_transformer.ast.node.Version;
@@ -147,14 +146,12 @@ public class TransformPatcher {
 				Root root = tree.getRoot();
 
 				// check for illegal references to internal Iris shader interfaces
-				root.nodeIndex.get(Identifier.class).stream()
-					.filter(identifier -> hasAnyPrefix(identifier.getName(), internalPrefixes))
-					.findAny()
-					.ifPresent(id -> {
-						throw new IllegalArgumentException(
-							"Detected a potential reference to unstable and internal Iris shader interfaces (iris_, irisMain and moj_import). This isn't currently supported. Violation: "
-								+ id.getName() + ". See debugging.md for more information.");
-					});
+				String internalIdentifier = findInternalIdentifier(root);
+				if (internalIdentifier != null) {
+					throw new IllegalArgumentException(
+						"Detected a potential reference to unstable and internal Iris shader interfaces (iris_, irisMain and moj_import). This isn't currently supported. Violation: "
+							+ internalIdentifier + ". See debugging.md for more information.");
+				}
 
 				root.indexBuildSession(() -> {
 					VersionStatement versionStatement = tree.getVersionStatement();
@@ -275,6 +272,15 @@ public class TransformPatcher {
 			}
 		}
 		return false;
+	}
+
+	static String findInternalIdentifier(Root root) {
+		for (String identifier : root.identifierIndex.index.keySet()) {
+			if (hasAnyPrefix(identifier, internalPrefixes)) {
+				return identifier;
+			}
+		}
+		return null;
 	}
 
 	public static void clearCaches() {
