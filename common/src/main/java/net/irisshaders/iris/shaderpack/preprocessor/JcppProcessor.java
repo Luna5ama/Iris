@@ -166,12 +166,14 @@ public class JcppProcessor {
 		private SourceMappingWriter(List<SourceLine> origins, int expectedSourceLength) {
 			builder = new StringBuilder(expectedSourceLength);
 			this.origins = origins;
-			origins.stream().map(line -> line.path().getPathString()).distinct().sorted()
-				.forEach(path -> {
-					int sourceId = sourceIds.size() + 1;
-					sourceIds.put(path, sourceId);
-					sourcePaths.put(sourceId, path);
-				});
+			for (SourceLine origin : origins) {
+				sourceIds.putIfAbsent(origin.path().getPathString(), 0);
+			}
+			int sourceId = 1;
+			for (var entry : sourceIds.entrySet()) {
+				entry.setValue(sourceId);
+				sourcePaths.put(sourceId++, entry.getKey());
+			}
 		}
 
 		private void append(Token token) {
