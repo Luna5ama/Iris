@@ -9,11 +9,30 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JcppSourceMappingTest {
+	@Test
+	void hoistsVersionAndEnabledExtensionsWithoutLeakingMarkers() {
+		String source = """
+			#version 330
+			#if 1
+			#extension GL_ARB_shader_image_load_store : enable
+			#endif
+			void main() {}
+			""";
+
+		String processed = JcppProcessor.glslPreprocessSource(source, List.of());
+
+		assertTrue(processed.startsWith("#version  330\n#extension  GL_ARB_shader_image_load_store : enable\n"));
+		assertFalse(processed.contains("IRIS_JCPP_GLSL"));
+		assertEquals(1, processed.split("#version", -1).length - 1);
+		assertEquals(1, processed.split("#extension", -1).length - 1);
+	}
+
 	@Test
 	void emitsPortableLineDirectivesAcrossIncludedFilesAndConditionals() {
 		AbsolutePackPath main = AbsolutePackPath.fromAbsolutePath("/shaders/main.fsh");

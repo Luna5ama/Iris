@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.TreeMap;
 
 public class JcppProcessor {
+	private static final String VERSION_DIRECTIVE = "#version";
+	private static final String EXTENSION_DIRECTIVE = "#extension";
 	private static final Cache<CacheKey, String> CACHE = CacheBuilder.newBuilder()
 		.maximumSize(1024)
 		.softValues()
@@ -64,8 +66,7 @@ public class JcppProcessor {
 		//
 		// TODO: This allows #version to not appear as the first non-comment non-whitespace thing in the file.
 		//       That's not the behavior we want. If you're reading this, don't rely on this behavior.
-		source = source.replace("#version", GlslCollectingListener.VERSION_MARKER);
-		source = source.replace("#extension", GlslCollectingListener.EXTENSION_MARKER);
+		source = replaceDirectiveKeywords(source);
 
 		// Remove null characters. Some packs, such as Chocapic High Performance, have random null characters that trip up JCPP.
 		source = source.replace("\u0000", "");
@@ -89,7 +90,7 @@ public class JcppProcessor {
 		pp.addInput(new StringLexerSource(source, true));
 		pp.addFeature(Feature.KEEPCOMMENTS);
 
-		SourceMappingWriter writer = new SourceMappingWriter(origins);
+		SourceMappingWriter writer = new SourceMappingWriter(origins, source.length());
 
 		try {
 			for (; ; ) {
@@ -110,6 +111,32 @@ public class JcppProcessor {
 		return source;
 	}
 
+	private static String replaceDirectiveKeywords(String source) {
+		int nextVersion = source.indexOf(VERSION_DIRECTIVE);
+		int nextExtension = source.indexOf(EXTENSION_DIRECTIVE);
+		if (nextVersion < 0 && nextExtension < 0) {
+			return source;
+		}
+
+		StringBuilder replaced = new StringBuilder(source.length() + 64);
+		int copiedThrough = 0;
+		while (nextVersion >= 0 || nextExtension >= 0) {
+			boolean replaceVersion = nextExtension < 0 || nextVersion >= 0 && nextVersion < nextExtension;
+			int directiveStart = replaceVersion ? nextVersion : nextExtension;
+			String directive = replaceVersion ? VERSION_DIRECTIVE : EXTENSION_DIRECTIVE;
+			String marker = replaceVersion ? GlslCollectingListener.VERSION_MARKER : GlslCollectingListener.EXTENSION_MARKER;
+			replaced.append(source, copiedThrough, directiveStart).append(marker);
+			copiedThrough = directiveStart + directive.length();
+			if (replaceVersion) {
+				nextVersion = source.indexOf(VERSION_DIRECTIVE, copiedThrough);
+			} else {
+				nextExtension = source.indexOf(EXTENSION_DIRECTIVE, copiedThrough);
+			}
+		}
+		replaced.append(source, copiedThrough, source.length());
+		return replaced.toString();
+	}
+
 	private static HashCode hashOrigins(List<SourceLine> origins) {
 		var hasher = Hashing.sha512().newHasher();
 		for (SourceLine origin : origins) {
@@ -126,7 +153,7 @@ public class JcppProcessor {
 	}
 
 	private static final class SourceMappingWriter {
-		private final StringBuilder builder = new StringBuilder();
+		private final StringBuilder builder;
 		private final StringBuilder leadingWhitespace = new StringBuilder();
 		private final List<SourceLine> origins;
 		private final Map<String, Integer> sourceIds = new TreeMap<>();
@@ -135,7 +162,8 @@ public class JcppProcessor {
 		private int currentSourceLine;
 		private boolean lineStart = true;
 
-		private SourceMappingWriter(List<SourceLine> origins) {
+		private SourceMappingWriter(List<SourceLine> origins, int expectedSourceLength) {
+			builder = new StringBuilder(expectedSourceLength);
 			this.origins = origins;
 			origins.stream().map(line -> line.path().getPathString()).distinct().sorted()
 				.forEach(path -> {
@@ -147,7 +175,7 @@ public class JcppProcessor {
 
 		private void append(Token token) {
 			String text = token.getText();
-			if (lineStart && text.chars().allMatch(Character::isWhitespace)) {
+			if (lineStart && isWhitespace(text)) {
 				appendWhitespace(text);
 				return;
 			}
@@ -167,6 +195,15 @@ public class JcppProcessor {
 			}
 
 			appendText(text);
+		}
+
+		private static boolean isWhitespace(String text) {
+			for (int i = 0; i < text.length(); i++) {
+				if (!Character.isWhitespace(text.charAt(i))) {
+					return false;
+				}
+			}
+			return true;
 		}
 
 		private void appendWhitespace(String text) {
