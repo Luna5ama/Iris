@@ -19,7 +19,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ForkJoinTask;
@@ -239,15 +238,16 @@ public class ProgramSet implements ProgramSetInterface {
 
 		@Override
 		protected ComputeSource[] compute() {
-			ForkJoinTask<ComputeSource>[] tasks = new ReadComputeSourceTask[26];
+			List<ForkJoinTask<ComputeSource>> tasks = new ArrayList<>(4);
 
 			for (char c = 'a'; c <= 'z'; ++c) {
 				String suffix = "_" + c;
 				String program = name + suffix;
 
-				if (hasComputeSource(directory, program)) {
-					tasks[c - 97] = new ReadComputeSourceTask(directory, sourceProvider, program, properties).fork();
+				if (!hasComputeSource(directory, program)) {
+					break;
 				}
+				tasks.add(new ReadComputeSourceTask(directory, sourceProvider, program, properties).fork());
 			}
 
 			ComputeSource[] programs = new ComputeSource[27];
@@ -255,18 +255,14 @@ public class ProgramSet implements ProgramSetInterface {
 				programs[0] = new ReadComputeSourceTask(directory, sourceProvider, name, properties).compute();
 			}
 
-			for (int i = 1; i < 27; i++) {
-				ForkJoinTask<ComputeSource> task = tasks[i - 1];
-				if (task == null) {
-					break;
-				}
-				programs[i] = task.join();
-				if (programs[i] == null) {
+			for (int i = 0; i < tasks.size(); i++) {
+				programs[i + 1] = tasks.get(i).join();
+				if (programs[i + 1] == null) {
 					break;
 				}
 			}
 
-			if (Arrays.stream(programs).allMatch(Objects::isNull)) {
+			if (programs[0] == null && programs[1] == null) {
 				return new ComputeSource[0];
 			}
 
