@@ -17,7 +17,6 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
@@ -27,6 +26,7 @@ import java.util.regex.Pattern;
 
 public final class IrisVibrisCompileCatalog {
 	private static final byte[] PATCHED_SOURCE_HASH_DOMAIN = "vibris-patched-program-v1".getBytes(StandardCharsets.UTF_8);
+	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 	private static final ThreadLocal<byte[]> PATCHED_SOURCE_HASH_BUFFER = ThreadLocal.withInitial(() -> new byte[8192]);
 	private static final Pattern GLSL_LOCATION = Pattern.compile("^(?:ERROR|WARNING)?\\s*:?\\s*(?:[^:]+:)?(\\d+)(?::|\\()(\\d+)?\\)?\\s*:?\\s*(.*)$", Pattern.CASE_INSENSITIVE);
 	private static final AtomicLong NEXT_GENERATION = new AtomicLong();
@@ -261,11 +261,13 @@ public final class IrisVibrisCompileCatalog {
 	}
 
 	private static String toHex(byte[] bytes) {
-		StringBuilder result = new StringBuilder(bytes.length * 2);
-		for (byte value : bytes) {
-			result.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+		char[] result = new char[bytes.length * 2];
+		for (int index = 0; index < bytes.length; index++) {
+			int value = bytes[index] & 0xff;
+			result[index * 2] = HEX_DIGITS[value >>> 4];
+			result[index * 2 + 1] = HEX_DIGITS[value & 0xf];
 		}
-		return result.toString();
+		return new String(result);
 	}
 
 	public static final class Session {
