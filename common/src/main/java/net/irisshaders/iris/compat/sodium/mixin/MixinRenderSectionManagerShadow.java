@@ -140,6 +140,17 @@ public abstract class MixinRenderSectionManagerShadow implements VibrisTerrainQu
 				capturedShadowTraversalPendingFinalization + ", requested=" +
 				capturedShadowRequestedGeneration + ", finalized=" + capturedShadowFinalizedGeneration);
 		}
+		if (!quiescent) {
+			return new TerrainSnapshot(
+				false,
+				List.of(),
+				List.of(),
+				List.of(),
+				capturedShadowNeedsRenderListUpdate,
+				List.of(),
+				String.join("; ", mismatches)
+			);
+		}
 
 		List<RenderListState> regularRenderListStates = new ArrayList<>();
 		List<RenderListState> shadowRenderListStates = new ArrayList<>();
