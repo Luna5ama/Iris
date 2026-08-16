@@ -5,14 +5,8 @@ import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
 import org.joml.Vector3i;
 
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 final class ComputeProgramTiming {
-	private static final Pattern LINE_DIRECTIVE = Pattern.compile(
-		"(?m)^\\h*#\\h*line\\h+\\d+(?:\\h+(\\d+))?\\h*$");
-	private static final Pattern MAIN_FUNCTION = Pattern.compile("\\bvoid\\s+main\\s*\\(");
-
 	private final String program;
 	private final String sourceFile;
 	private int directX = Integer.MIN_VALUE;
@@ -58,20 +52,8 @@ final class ComputeProgramTiming {
 		// JCPP and TransformPatcher preserve physical include origins through #line directives plus this source map.
 		// Attribute timing to the file containing the active main function, not merely the small wrapper .csh file.
 		ShaderSourceMap sourceMap = ShaderSourceMap.parse(transformedSource);
-		String source = withoutComments(sourceMap.sourceWithoutMetadata());
-		Matcher main = MAIN_FUNCTION.matcher(source);
-		if (!main.find()) {
-			return fallback;
-		}
-
-		Integer sourceId = null;
-		Matcher line = LINE_DIRECTIVE.matcher(source);
-		while (line.find() && line.start() < main.start()) {
-			if (line.group(1) != null) {
-				sourceId = Integer.parseInt(line.group(1));
-			}
-		}
-		if (sourceId == null) {
+		int sourceId = findMainSourceId(sourceMap.sourceWithoutMetadata());
+		if (sourceId < 0) {
 			return fallback;
 		}
 
@@ -83,40 +65,155 @@ final class ComputeProgramTiming {
 		return separator < 0 ? sourcePath : sourcePath.substring(separator + 1);
 	}
 
-	private static String withoutComments(String source) {
-		StringBuilder result = new StringBuilder(source.length());
+	private static int findMainSourceId(String source) {
 		boolean lineComment = false;
 		boolean blockComment = false;
+		boolean lineStart = true;
+		boolean previousWordCharacter = false;
+		int sourceId = -1;
 		for (int i = 0; i < source.length(); i++) {
 			char current = source.charAt(i);
 			char next = i + 1 < source.length() ? source.charAt(i + 1) : '\0';
 			if (lineComment) {
 				if (current == '\n' || current == '\r') {
 					lineComment = false;
-					result.append(current);
-				} else {
-					result.append(' ');
+					lineStart = true;
 				}
+				previousWordCharacter = false;
 			} else if (blockComment) {
 				if (current == '*' && next == '/') {
-					result.append("  ");
 					i++;
 					blockComment = false;
-				} else {
-					result.append(current == '\n' || current == '\r' ? current : ' ');
+				} else if (current == '\n' || current == '\r') {
+					lineStart = true;
 				}
+				previousWordCharacter = false;
 			} else if (current == '/' && next == '/') {
-				result.append("  ");
 				i++;
 				lineComment = true;
+				previousWordCharacter = false;
 			} else if (current == '/' && next == '*') {
-				result.append("  ");
 				i++;
 				blockComment = true;
+				previousWordCharacter = false;
+			} else if (current == '\n' || current == '\r') {
+				lineStart = true;
+				previousWordCharacter = false;
+			} else if (isHorizontalWhitespace(current)) {
+				previousWordCharacter = false;
 			} else {
-				result.append(current);
+				if (lineStart && current == '#') {
+					int directiveSourceId = parseLineDirectiveSourceId(source, i);
+					if (directiveSourceId >= 0) {
+						sourceId = directiveSourceId;
+					}
+				}
+				if (!previousWordCharacter && current == 'v' && matchesMainFunction(source, i)) {
+					return sourceId;
+				}
+				lineStart = false;
+				previousWordCharacter = isWordCharacter(current);
 			}
 		}
-		return result.toString();
+		return -1;
+	}
+
+	private static boolean matchesMainFunction(String source, int offset) {
+		if (!source.regionMatches(offset, "void", 0, 4)) {
+			return false;
+		}
+		offset += 4;
+		if (offset >= source.length()
+			|| !Character.isWhitespace(source.charAt(offset)) && !startsComment(source, offset)) {
+			return false;
+		}
+		offset = skipMaskedWhitespace(source, offset);
+		if (!source.regionMatches(offset, "main", 0, 4)) {
+			return false;
+		}
+		offset = skipMaskedWhitespace(source, offset + 4);
+		return offset < source.length() && source.charAt(offset) == '(';
+	}
+
+	private static int skipMaskedWhitespace(String source, int offset) {
+		while (offset < source.length()) {
+			if (Character.isWhitespace(source.charAt(offset))) {
+				offset++;
+			} else if (offset + 1 < source.length() && source.charAt(offset) == '/' && source.charAt(offset + 1) == '/') {
+				offset += 2;
+				while (offset < source.length() && source.charAt(offset) != '\n' && source.charAt(offset) != '\r') {
+					offset++;
+				}
+			} else if (offset + 1 < source.length() && source.charAt(offset) == '/' && source.charAt(offset + 1) == '*') {
+				int commentEnd = source.indexOf("*/", offset + 2);
+				offset = commentEnd < 0 ? source.length() : commentEnd + 2;
+			} else {
+				break;
+			}
+		}
+		return offset;
+	}
+
+	private static boolean startsComment(String source, int offset) {
+		return offset + 1 < source.length() && source.charAt(offset) == '/'
+			&& (source.charAt(offset + 1) == '/' || source.charAt(offset + 1) == '*');
+	}
+
+	private static int parseLineDirectiveSourceId(String source, int offset) {
+		offset = skipHorizontalWhitespace(source, offset + 1);
+		if (!source.regionMatches(offset, "line", 0, 4)) {
+			return -1;
+		}
+		offset += 4;
+		int lineStart = skipHorizontalWhitespace(source, offset);
+		if (lineStart == offset) {
+			return -1;
+		}
+		int lineEnd = skipDigits(source, lineStart);
+		if (lineEnd == lineStart) {
+			return -1;
+		}
+		int sourceStart = skipHorizontalWhitespace(source, lineEnd);
+		if (sourceStart == lineEnd) {
+			return -1;
+		}
+		int sourceEnd = skipDigits(source, sourceStart);
+		if (sourceEnd == sourceStart) {
+			return -1;
+		}
+		int remainder = skipHorizontalWhitespace(source, sourceEnd);
+		if (remainder < source.length() && source.charAt(remainder) != '\n' && source.charAt(remainder) != '\r'
+			&& !startsComment(source, remainder)) {
+			return -1;
+		}
+		return Integer.parseInt(source, sourceStart, sourceEnd, 10);
+	}
+
+	private static int skipHorizontalWhitespace(String source, int offset) {
+		while (offset < source.length() && isHorizontalWhitespace(source.charAt(offset))) {
+			offset++;
+		}
+		return offset;
+	}
+
+	private static int skipDigits(String source, int offset) {
+		while (offset < source.length()) {
+			char character = source.charAt(offset);
+			if (character < '0' || character > '9') {
+				break;
+			}
+			offset++;
+		}
+		return offset;
+	}
+
+	private static boolean isHorizontalWhitespace(char character) {
+		return character == ' ' || character == '\t' || character == '\u00A0' || character == '\u1680'
+			|| character == '\u180E' || character >= '\u2000' && character <= '\u200A'
+			|| character == '\u202F' || character == '\u205F' || character == '\u3000';
+	}
+
+	private static boolean isWordCharacter(char character) {
+		return Character.isLetterOrDigit(character) || character == '_';
 	}
 }

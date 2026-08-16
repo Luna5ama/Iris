@@ -57,6 +57,28 @@ class ComputeProgramTimingTest {
 		assertEquals("indirect:offset=64", timing.indirect(64).getDispatch());
 	}
 
+	@Test
+	void scansCommentsAndLineDirectivesWithoutCopyingTheSource() {
+		String source = """
+			// #line 1 1
+			#line 1 1
+			/* void main() {}
+			#line 99 1
+			*/
+			#line 20 2
+			#line 21
+			void/* comment */ main /* comment */() {}
+			""";
+		String mapped = ShaderSourceMap.appendMetadata(source, Map.of(
+			1, "/wrapper.csh",
+			2, "/implementation.comp.glsl"
+		));
+
+		GpuTimingProgram timing = new ComputeProgramTiming("compute", mapped).direct(new Vector3i(1));
+
+		assertEquals("implementation.comp.glsl", timing.getSourceFile());
+	}
+
 	private static String mappedSource(String program, String implementation) {
 		String source = """
 			#line 1 1
