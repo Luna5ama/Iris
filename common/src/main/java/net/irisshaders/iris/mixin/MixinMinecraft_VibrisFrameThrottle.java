@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.renderer.GameRenderer;
+import org.lwjgl.opengl.GL11C;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -139,6 +140,7 @@ public class MixinMinecraft_VibrisFrameThrottle {
 		)
 	)
 	private void iris$vibrisYieldRenderLoop(boolean tick, CallbackInfo ci) {
+		GL11C.glFinish();
 		try {
 			Thread.sleep(1);
 		} catch (InterruptedException exception) {
