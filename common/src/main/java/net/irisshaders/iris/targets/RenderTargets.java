@@ -251,11 +251,6 @@ public class RenderTargets {
 		fullClearRequired = false;
 	}
 
-	public void resetDepthCopies() {
-		translucentDepthDirty = true;
-		handDepthDirty = true;
-	}
-
 	public GlFramebuffer createFramebufferWritingToMain(int[] drawBuffers) {
 		return createFullFramebuffer(false, drawBuffers);
 	}

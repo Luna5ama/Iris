@@ -3,13 +3,10 @@ package net.irisshaders.iris.mixin.texture.pbr;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import net.irisshaders.iris.mixin.texture.TextureAtlasAccessor;
-import net.irisshaders.iris.mixinterface.VibrisTextureAtlasAnimation;
 import net.irisshaders.iris.pbr.TextureTracker;
 import net.irisshaders.iris.pbr.texture.PBRAtlasHolder;
 import net.irisshaders.iris.pbr.texture.PBRAtlasTexture;
 import net.irisshaders.iris.pbr.texture.TextureAtlasExtension;
-import net.irisshaders.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.SpriteLoader;
 import net.minecraft.client.renderer.texture.TextureAtlas;
@@ -23,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(TextureAtlas.class)
-public abstract class MixinTextureAtlas extends AbstractTexture implements TextureAtlasExtension, VibrisTextureAtlasAnimation {
+public abstract class MixinTextureAtlas extends AbstractTexture implements TextureAtlasExtension {
 	@Shadow
 	@Final
 	private Identifier location;
@@ -31,13 +28,6 @@ public abstract class MixinTextureAtlas extends AbstractTexture implements Textu
 	private PBRAtlasHolder pbrHolder;
 	@Shadow
 	private GpuTextureView[] mipViews;
-
-	@Inject(method = "cycleAnimationFrames()V", at = @At("HEAD"), cancellable = true)
-	private void iris$freezeCycleAnimationFrames(CallbackInfo ci) {
-		if (SystemTimeUniforms.isDeterministicTimeActive()) {
-			ci.cancel();
-		}
-	}
 
 	@Inject(method = "cycleAnimationFrames()V", at = @At("TAIL"))
 	private void iris$onTailCycleAnimationFrames(CallbackInfo ci) {
@@ -57,17 +47,6 @@ public abstract class MixinTextureAtlas extends AbstractTexture implements Textu
 			pbrHolder = new PBRAtlasHolder();
 		}
 		return pbrHolder;
-	}
-
-	@Override
-	public void iris$resetAnimationPhase() {
-		TextureAtlas self = (TextureAtlas) (Object) this;
-		TextureAtlasAccessor accessor = (TextureAtlasAccessor) self;
-		PBRAtlasTexture.resetAndDrawAnimationStates(
-			self.location(), accessor.getAnimatedTextureStates(), mipViews, accessor.getMaxLevel());
-		if (pbrHolder != null) {
-			pbrHolder.resetAnimationPhase();
-		}
 	}
 
 	@Inject(method = "upload", at = @At("RETURN"))

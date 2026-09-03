@@ -122,8 +122,7 @@ public class MixinLevelRenderer {
 		IrisTimeUniforms.updateTime();
 		CapturedRenderingState.INSTANCE.setGbufferModelView(modelView);
 		CapturedRenderingState.INSTANCE.setGbufferProjection(projection);
-		float fakeTickDelta = SystemTimeUniforms.resolveTickDelta(
-			deltaTracker.getGameTimeDeltaPartialTick(false));
+		float fakeTickDelta = deltaTracker.getGameTimeDeltaPartialTick(false);
 		CapturedRenderingState.INSTANCE.setTickDelta(fakeTickDelta);
 		if (((CloudRendererAccessor) this.cloudRenderer).getTexture() != null) {
 			CapturedRenderingState.INSTANCE.setCloudTime((this.level.getGameTime() % (((CloudRendererAccessor) this.cloudRenderer).getTexture().width() * 400) + fakeTickDelta) * 0.03F);

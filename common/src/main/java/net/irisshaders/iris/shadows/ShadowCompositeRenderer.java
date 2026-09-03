@@ -8,9 +8,9 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import dev.vibris.api.ResourceCatalog;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.irisshaders.iris.features.FeatureFlags;
+import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
 import net.irisshaders.iris.gl.blending.BlendModeStorage;
@@ -45,8 +45,6 @@ import net.irisshaders.iris.targets.RenderTarget;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
-import net.irisshaders.iris.vibris.IrisVibrisPassCapture;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL15C;
 import org.lwjgl.opengl.GL20C;
@@ -70,13 +68,11 @@ public class ShadowCompositeRenderer {
 	private final Object2ObjectMap<String, TextureAccess> irisCustomTextures;
 	private final WorldRenderingPipeline pipeline;
 	private final Set<GlImage> irisCustomImages;
-	private final IrisVibrisPassCapture vibrisPassCapture;
 
-	public ShadowCompositeRenderer(WorldRenderingPipeline pipeline, IrisVibrisPassCapture vibrisPassCapture, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, ShadowRenderTargets renderTargets, ShaderStorageBufferHolder holder,
+	public ShadowCompositeRenderer(WorldRenderingPipeline pipeline, PackDirectives packDirectives, ProgramSource[] sources, ComputeSource[][] computes, ShadowRenderTargets renderTargets, ShaderStorageBufferHolder holder,
 								   TextureAccess noiseTexture, FrameUpdateNotifier updateNotifier,
 								   Object2ObjectMap<String, TextureAccess> customTextureIds, Set<GlImage> customImages, ImmutableMap<Integer, Boolean> explicitPreFlips, Object2ObjectMap<String, TextureAccess> irisCustomTextures, CustomUniforms customUniforms) {
 		this.pipeline = pipeline;
-		this.vibrisPassCapture = vibrisPassCapture;
 		this.noiseTexture = noiseTexture;
 		this.renderTargets = renderTargets;
 		this.customTextureIds = customTextureIds;
@@ -111,7 +107,6 @@ public class ShadowCompositeRenderer {
 						.map(ComputeSource::getName).orElse("unknown");
 					pass.computes = createComputes(computes[i], flipped, flippedAtLeastOnceSnapshot, renderTargets, holder);
 					pass.flipsAfterPass = flipped;
-					pass.captureHandle = vibrisPassCapture.register(ResourceCatalog.PassStage.SHADOW_COMPOSITE, pass.name);
 					passes.add(pass);
 				}
 				continue;
@@ -160,7 +155,6 @@ public class ShadowCompositeRenderer {
 				}
 			});
 			pass.flipsAfterPass = renderTargets.snapshot();
-			pass.captureHandle = vibrisPassCapture.register(ResourceCatalog.PassStage.SHADOW_COMPOSITE, pass.name);
 		}
 
 		this.passes = passes.build();
@@ -209,6 +203,7 @@ public class ShadowCompositeRenderer {
 		VertexFormat.IndexType type = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).type();
 
 		for (Pass renderPass : passes) {
+			GLDebug.pushGroup(980, renderPass.name);
 			boolean ranCompute = false;
 			for (ComputeProgram computeProgram : renderPass.computes) {
 				if (computeProgram != null) {
@@ -227,7 +222,7 @@ public class ShadowCompositeRenderer {
 			Program.unbind();
 
 			if (renderPass instanceof ComputeOnlyPass) {
-				vibrisPassCapture.captureBoundary(renderPass.captureHandle, renderPass.flipsAfterPass);
+				GLDebug.popGroup();
 				continue;
 			}
 
@@ -258,7 +253,7 @@ public class ShadowCompositeRenderer {
 				this.customUniforms.push(renderPass.program);
 				pass.drawIndexed(0, 0, 6, 1);
 			}
-			vibrisPassCapture.captureBoundary(renderPass.captureHandle, renderPass.flipsAfterPass);
+			GLDebug.popGroup();
 		}
 
 		// Make sure to reset the viewport to how it was before... Otherwise weird issues could occur.
@@ -296,10 +291,8 @@ public class ShadowCompositeRenderer {
 		ProgramBuilder builder;
 
 		try {
-			builder = IrisVibrisCompileCatalog.compileGraphics(
-				source.getName(), "shadowcomp", transformed,
-				() -> ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
-					IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
+			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
+				IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
 		} catch (RuntimeException e) {
 			// TODO: Better error handling
 			throw new RuntimeException("Shader compilation failed for shadow composite " + source.getName() + "!", e);
@@ -338,9 +331,7 @@ public class ShadowCompositeRenderer {
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = IrisVibrisCompileCatalog.compileCompute(
-						source.getName() + ".csh", "shadowcomp", transformed,
-						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
+					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
 				} catch (RuntimeException e) {
 					// TODO: Better error handling
 					throw new RuntimeException("Shader compilation failed for shadowcomp compute " + source.getName() + "!", e);
@@ -387,7 +378,6 @@ public class ShadowCompositeRenderer {
 		ViewportData viewportScale;
 		ComputeProgram[] computes;
 		ImmutableSet<Integer> flipsAfterPass;
-		IrisVibrisPassCapture.PassHandle captureHandle;
 
 		protected void destroy() {
 			this.program.destroy();

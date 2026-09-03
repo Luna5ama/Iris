@@ -4,7 +4,6 @@ import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import dev.luna5ama.vibris.capture.GpuTimingProgram;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.Iris;
@@ -15,7 +14,6 @@ import net.irisshaders.iris.mixin.GlStateManagerAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.PerspectiveProjectionMatrixBuffer;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector3i;
@@ -37,7 +35,6 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.nio.file.Path;
 import java.util.EnumMap;
 
 /**
@@ -56,22 +53,6 @@ public class IrisRenderSystem {
 	private static int backupPolygonMode = GL43C.GL_FILL;
 	private static int[] samplers;
 	private static final IntList textureToUnswizzle = new IntArrayList();
-
-	public static void prepareCapture(@NotNull Path path, String passName) {
-		Iris.getCaptureManager().prepareSingleCapture(path, passName);
-	}
-
-	public static void prepareMultiCapture(@NotNull Path path, String programType) {
-		Iris.getCaptureManager().prepareMultiCapture(path, programType);
-	}
-
-	public static void startCapture() {
-		Iris.getCaptureManager().startFrame();
-	}
-
-	public static void endCapture() {
-		Iris.getCaptureManager().endFrame();
-	}
 
 	public static void initRenderer() {
 		if (GL.getCapabilities().OpenGL45) {
@@ -342,31 +323,7 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchCompute(EnumMap<ShaderType, String> sources, String passName, Vector3i workGroups) {
-		Iris.getShaderDebugControl().beginCompute();
-		try {
-			if (!Iris.getCaptureManager().dispatchCompute(
-				sources.get(ShaderType.COMPUTE), passName, workGroups.x, workGroups.y, workGroups.z
-			)) {
-				dispatchCompute(workGroups);
-			}
-		} finally {
-			Iris.getShaderDebugControl().endCompute();
-		}
-	}
-
-	public static void dispatchCompute(
-		EnumMap<ShaderType, String> sources, GpuTimingProgram timingProgram, Vector3i workGroups
-	) {
-		Iris.getShaderDebugControl().beginCompute(timingProgram);
-		try {
-			if (!Iris.getCaptureManager().dispatchCompute(
-				sources.get(ShaderType.COMPUTE), timingProgram.getProgram(), workGroups.x, workGroups.y, workGroups.z
-			)) {
-				dispatchCompute(workGroups);
-			}
-		} finally {
-			Iris.getShaderDebugControl().endCompute();
-		}
+		dispatchCompute(workGroups);
 	}
 
 	public static void memoryBarrier(int barriers) {
@@ -542,29 +499,7 @@ public class IrisRenderSystem {
 	}
 
 	public static void dispatchComputeIndirect(EnumMap<ShaderType, String> sources, String passName, long offset) {
-		Iris.getShaderDebugControl().beginCompute();
-		try {
-			if (!Iris.getCaptureManager().dispatchComputeIndirect(sources.get(ShaderType.COMPUTE), passName, offset)) {
-				dispatchComputeIndirect(offset);
-			}
-		} finally {
-			Iris.getShaderDebugControl().endCompute();
-		}
-	}
-
-	public static void dispatchComputeIndirect(
-		EnumMap<ShaderType, String> sources, GpuTimingProgram timingProgram, long offset
-	) {
-		Iris.getShaderDebugControl().beginCompute(timingProgram);
-		try {
-			if (!Iris.getCaptureManager().dispatchComputeIndirect(
-				sources.get(ShaderType.COMPUTE), timingProgram.getProgram(), offset
-			)) {
-				dispatchComputeIndirect(offset);
-			}
-		} finally {
-			Iris.getShaderDebugControl().endCompute();
-		}
+		dispatchComputeIndirect(offset);
 	}
 
 	public static void bindBuffer(int target, int buffer) {

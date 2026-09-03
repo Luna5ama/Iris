@@ -1,7 +1,6 @@
 package net.irisshaders.iris.mixin;
 
 import net.irisshaders.iris.Iris;
-import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -13,11 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public class MixinMinecraft_PipelineManagement {
-	@Inject(method = "destroy", at = @At("HEAD"))
-	private void iris$closeVibris(CallbackInfo ci) {
-		IrisVibrisLifecycle.close();
-	}
-
 	/**
 	 * Should run before the Minecraft.level field is updated after disconnecting from a server or leaving a singleplayer world
 	 */

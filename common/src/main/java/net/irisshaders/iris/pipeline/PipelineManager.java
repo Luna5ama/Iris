@@ -40,17 +40,6 @@ public class PipelineManager {
 		return pipeline;
 	}
 
-	public void installPipeline(NamespacedId currentDimension, WorldRenderingPipeline replacement) {
-		if (pipeline != null || !pipelinesPerDimension.isEmpty()) {
-			throw new IllegalStateException("The previous pipeline must be destroyed before installing a replacement");
-		}
-		SystemTimeUniforms.COUNTER.reset();
-		SystemTimeUniforms.TIMER.reset();
-		pipeline = replacement;
-		pipelinesPerDimension.put(currentDimension, replacement);
-		reloadWorldRendererIfRequired();
-	}
-
 	@Nullable
 	public WorldRenderingPipeline getPipelineNullable() {
 		return pipeline;

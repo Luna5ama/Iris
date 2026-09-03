@@ -3,7 +3,6 @@ package net.irisshaders.iris.pipeline.programs;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Ints;
 import com.mojang.blaze3d.opengl.GlStateManager;
-import dev.luna5ama.vibris.capture.GraphicsProgramRegistry;
 import net.caffeinemc.mods.sodium.client.gl.GlObject;
 import net.caffeinemc.mods.sodium.client.gl.shader.GlProgram;
 import net.caffeinemc.mods.sodium.client.gl.shader.GlShader;
@@ -67,8 +66,7 @@ public class SodiumPrograms {
 
 			AlphaTest alphaTest = getAlphaTest(pass, source);
 			Map<PatchShaderType, String> transformed = transformShaders(source, alphaTest, programSet);
-			GlProgram<ChunkShaderInterface> shader = createShader(pipeline, pass, source, alphaTest, customUniforms, flipState,
-				transformed, createGlShaders(pass.name().toLowerCase(Locale.ROOT), transformed));
+			GlProgram<ChunkShaderInterface> shader = createShader(pipeline, pass, source, alphaTest, customUniforms, flipState, createGlShaders(pass.name().toLowerCase(Locale.ROOT), transformed));
 			shaders.put(pass, shader);
 		}
 
@@ -116,7 +114,6 @@ public class SodiumPrograms {
 	private GlProgram<ChunkShaderInterface> createShader(IrisRenderingPipeline pipeline, Pass pass, ProgramSource source,
 														 AlphaTest alphaTest,
 														 CustomUniforms customUniforms, Supplier<ImmutableSet<Integer>> flipState,
-														 Map<PatchShaderType, String> transformedSources,
 														 Map<PatchShaderType, GlShader> transformed) {
 		GlProgram.Builder builder = GlProgram.builder(Identifier.fromNamespaceAndPath("sodium", "chunk_shader_for_" + pass.name().toLowerCase(Locale.ROOT)));
 
@@ -127,7 +124,7 @@ public class SodiumPrograms {
 		boolean containsTessellation = source.getTessEvalSource().isPresent();
 
 		try {
-			return buildProgram(builder, pipeline, pass, source, alphaTest, customUniforms, flipState, containsTessellation, transformedSources);
+			return buildProgram(builder, pipeline, pass, source, alphaTest, customUniforms, flipState, containsTessellation);
 		} finally {
 			transformed.values().forEach(GlShader::delete);
 		}
@@ -159,8 +156,7 @@ public class SodiumPrograms {
 	private GlProgram<ChunkShaderInterface> buildProgram(GlProgram.Builder builder, IrisRenderingPipeline pipeline,
 														 Pass pass, ProgramSource source, AlphaTest alphaTest, CustomUniforms customUniforms,
 														 Supplier<ImmutableSet<Integer>> flipState,
-														 boolean containsTessellation,
-														 Map<PatchShaderType, String> transformed) {
+														 boolean containsTessellation) {
 		return builder
 			.bindAttribute("a_Position", ChunkShaderBindingPoints.ATTRIBUTE_POSITION)
 			.bindAttribute("a_Color", ChunkShaderBindingPoints.ATTRIBUTE_COLOR)
@@ -174,14 +170,6 @@ public class SodiumPrograms {
 			.link((shader) -> {
 				int handle = ((GlObject) shader).handle();
 				GLDebug.nameObject(GL43C.GL_PROGRAM, handle, "sodium-terrain-" + pass.toString().toLowerCase(Locale.ROOT));
-				GraphicsProgramRegistry.register(
-					handle,
-					source.getName(),
-					transformed.get(PatchShaderType.VERTEX),
-					transformed.get(PatchShaderType.TESS_CONTROL),
-					transformed.get(PatchShaderType.TESS_EVAL),
-					transformed.get(PatchShaderType.GEOMETRY),
-					transformed.get(PatchShaderType.FRAGMENT));
 
 				if (!hasNormal) hasNormal = IrisRenderSystem.getAttribLocation(handle, "iris_Normal") != -1;
 				if (!hasMidBlock) hasMidBlock = IrisRenderSystem.getAttribLocation(handle, "at_midBlock") != -1;

@@ -40,7 +40,6 @@ buildConfig {
     buildConfigField("IS_SHARED_BETA", false)
     buildConfigField("BETA_TAG", "")
     buildConfigField("BETA_VERSION", 0)
-    buildConfigField("VIBRIS_VERSION", "0.0.1-SNAPSHOT")
 
     sourceSets.getByName("desktop") {
         buildConfigField("IS_SHARED_BETA", false)
@@ -60,7 +59,6 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:$FABRIC_LOADER_VERSION")
 
     modCompileOnly("net.fabricmc.fabric-api:fabric-renderer-api-v1:3.2.9+1172e897d7")
-    modCompileOnly("net.fabricmc.fabric-api:fabric-command-api-v2:2.2.20+78d798af4f")
 
     modImplementation(SODIUM_DEPENDENCY_FABRIC)
     modCompileOnly("org.antlr:antlr4-runtime:4.13.1")
@@ -71,15 +69,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.anarres:jcpp:1.4.14")
     testImplementation("io.github.douira:glsl-transformer:3.0.0-pre3-iris14")
-    testImplementation("dev.luna5ama:vibris-capture")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
-    compileOnly("dev.luna5ama:gl-wrapper-core:1.1.0")
-    compileOnly("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
-    compileOnly("dev.luna5ama:vibris-capture")
-    compileOnly("dev.luna5ama:vibris-api")
-    compileOnly("dev.luna5ama:vibris-core")
-    compileOnly("dev.luna5ama:vibris-protocol-java")
 
     compileOnly(files(rootDir.resolve("DHApi.jar")))
 }

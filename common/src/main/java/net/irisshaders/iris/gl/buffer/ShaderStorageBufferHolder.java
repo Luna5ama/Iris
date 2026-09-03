@@ -14,9 +14,6 @@ import java.util.List;
 public class ShaderStorageBufferHolder {
 	private static final List<ShaderStorageBuffer> ACTIVE_BUFFERS = new ArrayList<>();
 
-	public static List<ShaderStorageBuffer> getActiveBuffers() {
-		return List.copyOf(ACTIVE_BUFFERS);
-	}
 	private int cachedWidth;
 	private int cachedHeight;
 	private ShaderStorageBuffer[] buffers;
@@ -84,16 +81,6 @@ public class ShaderStorageBufferHolder {
 				buffer.bind();
 			}
 		}
-	}
-
-	public void resetBuffers() {
-		if (destroyed) {
-			throw new IllegalStateException("Tried to reset destroyed buffer objects");
-		}
-		for (ShaderStorageBuffer buffer : buffers) {
-			if (buffer != null) buffer.resetContents();
-		}
-		GlStateManager._glBindBuffer(GL43C.GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
 	public int getBufferIndex(int index) {

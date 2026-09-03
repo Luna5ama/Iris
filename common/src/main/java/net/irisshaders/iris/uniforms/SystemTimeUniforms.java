@@ -2,7 +2,6 @@ package net.irisshaders.iris.uniforms;
 
 import net.irisshaders.iris.gl.uniform.UniformHolder;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
-import net.minecraft.client.DeltaTracker;
 
 import java.util.OptionalLong;
 import java.util.function.IntSupplier;
@@ -13,12 +12,8 @@ import java.util.function.IntSupplier;
  * @see <a href="https://github.com/IrisShaders/ShaderDoc/blob/master/uniforms.md#system-time">Uniforms: System time</a>
  */
 public final class SystemTimeUniforms {
-	private static final float DETERMINISTIC_FRAME_TIME_SECONDS = 1.0F / 60.0F;
-
 	public static final Timer TIMER = new Timer();
 	public static final FrameCounter COUNTER = new FrameCounter();
-
-	private static DeterministicTimeScope deterministicTimeScope;
 
 	private SystemTimeUniforms() {
 	}
@@ -33,89 +28,6 @@ public final class SystemTimeUniforms {
 			.uniform1i(UniformUpdateFrequency.PER_FRAME, "frameCounter", COUNTER)
 			.uniform1f(UniformUpdateFrequency.PER_FRAME, "frameTime", TIMER::getLastFrameTime)
 			.uniform1f(UniformUpdateFrequency.PER_FRAME, "frameTimeCounter", TIMER::getFrameTimeCounter);
-	}
-
-	/**
-	 * Advances all shader-visible system time values for one rendered frame.
-	 *
-	 * @param realNanos the real monotonic time at the start of the frame
-	 * @param renderedFrame the number of completed rendered world frames at the start of the frame
-	 */
-	public static synchronized void beginFrame(long realNanos, long renderedFrame) {
-		if (deterministicTimeScope == null) {
-			COUNTER.beginFrame();
-			TIMER.beginRealFrame(realNanos);
-		} else {
-			long deterministicFrame = Math.subtractExact(renderedFrame, deterministicTimeScope.originFrame);
-			COUNTER.setFrame(deterministicFrame);
-			TIMER.beginDeterministicFrame(deterministicFrame);
-		}
-	}
-
-	/**
-	 * Starts a non-nestable deterministic shader-time scope anchored to a completed rendered frame.
-	 *
-	 * @param originFrame the completed rendered frame at which the capture phase starts
-	 */
-	public static synchronized DeterministicTimeScope beginDeterministicTime(long originFrame) {
-		if (deterministicTimeScope != null) {
-			throw new IllegalStateException("Deterministic shader time is already active");
-		}
-
-		DeterministicTimeScope scope = new DeterministicTimeScope(originFrame);
-		deterministicTimeScope = scope;
-		COUNTER.reset();
-		TIMER.reset();
-		return scope;
-	}
-
-	public static synchronized boolean isDeterministicTimeActive() {
-		return deterministicTimeScope != null;
-	}
-
-	/**
-	 * Resolves a Minecraft render partial tick against the active deterministic capture phase.
-	 *
-	 * <p>Minecraft uses a partial tick of {@code 1.0} while its game clock is frozen. Using the
-	 * same value here keeps shader-visible celestial and interpolation state fixed throughout a
-	 * deterministic capture without changing ordinary rendering.</p>
-	 */
-	public static synchronized float resolveTickDelta(float realTickDelta) {
-		return deterministicTimeScope == null ? realTickDelta : 1.0F;
-	}
-
-	/**
-	 * Uses Minecraft's fixed full-tick render state while deterministic capture is active.
-	 */
-	public static synchronized DeltaTracker resolveDeltaTracker(DeltaTracker realDeltaTracker) {
-		return deterministicTimeScope == null ? realDeltaTracker : DeltaTracker.ONE;
-	}
-
-	private static synchronized void endDeterministicTime(DeterministicTimeScope scope) {
-		if (scope.closed) {
-			return;
-		}
-		if (deterministicTimeScope != scope) {
-			throw new IllegalStateException("Deterministic shader time scope is not active");
-		}
-
-		deterministicTimeScope = null;
-		scope.closed = true;
-		TIMER.reset();
-	}
-
-	public static final class DeterministicTimeScope implements AutoCloseable {
-		private final long originFrame;
-		private boolean closed;
-
-		private DeterministicTimeScope(long originFrame) {
-			this.originFrame = originFrame;
-		}
-
-		@Override
-		public void close() {
-			endDeterministicTime(this);
-		}
 	}
 
 	/**
@@ -134,12 +46,8 @@ public final class SystemTimeUniforms {
 			return count;
 		}
 
-		private void beginFrame() {
+		public void beginFrame() {
 			count = (count + 1) % 720720;
-		}
-
-		private void setFrame(long frame) {
-			count = (int) Math.floorMod(frame, 720720L);
 		}
 
 		public void reset() {
@@ -163,7 +71,7 @@ public final class SystemTimeUniforms {
 			reset();
 		}
 
-		private void beginRealFrame(long frameStartTime) {
+		public void beginFrame(long frameStartTime) {
 			// Track how much time passed since the last time we began rendering a frame.
 			// If this is the first frame, then use a value of 0.
 			long diffNs = frameStartTime - lastStartTime.orElse(frameStartTime);
@@ -171,21 +79,9 @@ public final class SystemTimeUniforms {
 			long diffMs = (diffNs / 1000) / 1000;
 
 			// Convert to seconds with a resolution of 1 millisecond, and store as the time taken for the last frame to complete.
-			advance(diffMs / 1000.0F);
+			lastFrameTime = diffMs / 1000.0F;
 
-			// Finally, update the "last start time" value.
-			lastStartTime = OptionalLong.of(frameStartTime);
-		}
-
-		private void beginDeterministicFrame(long frame) {
-			lastFrameTime = DETERMINISTIC_FRAME_TIME_SECONDS;
-			long nextFrame = Math.addExact(frame, 1L);
-			long cycleFrame = Math.floorMod(nextFrame, 216000L);
-			frameTimeCounter = cycleFrame * DETERMINISTIC_FRAME_TIME_SECONDS;
-		}
-
-		private void advance(float elapsedSeconds) {
-			lastFrameTime = elapsedSeconds;
+			// Advance the current frameTimeCounter by the amount of time the last frame took.
 			frameTimeCounter += lastFrameTime;
 
 			// Prevent the frameTimeCounter from getting too large, since that causes issues with some shaderpacks
@@ -193,6 +89,9 @@ public final class SystemTimeUniforms {
 			if (frameTimeCounter >= 3600.0F) {
 				frameTimeCounter = 0.0F;
 			}
+
+			// Finally, update the "last start time" value.
+			lastStartTime = OptionalLong.of(frameStartTime);
 		}
 
 		public float getFrameTimeCounter() {

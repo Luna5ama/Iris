@@ -1,33 +1,21 @@
 package net.irisshaders.iris.gl.program;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
-import dev.luna5ama.vibris.capture.GraphicsProgramRegistry;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
-import net.irisshaders.iris.gl.shader.ShaderType;
 import org.lwjgl.opengl.GL43C;
-
-import java.util.EnumMap;
 
 public final class Program extends GlResource {
 	private final ProgramUniforms uniforms;
 	private final ProgramSamplers samplers;
 	private final ProgramImages images;
 
-	Program(String name, int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images,
-			EnumMap<ShaderType, String> sources) {
+	Program(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
 		super(program);
 
 		this.uniforms = uniforms;
 		this.samplers = samplers;
 		this.images = images;
-
-		GraphicsProgramRegistry.register(program, name,
-			sources.get(ShaderType.VERTEX),
-			sources.get(ShaderType.TESSELATION_CONTROL),
-			sources.get(ShaderType.TESSELATION_EVAL),
-			sources.get(ShaderType.GEOMETRY),
-			sources.get(ShaderType.FRAGMENT));
 	}
 
 	public static void unbind() {
@@ -46,7 +34,6 @@ public final class Program extends GlResource {
 	}
 
 	public void destroyInternal() {
-		GraphicsProgramRegistry.unregister(getGlId());
 		GlStateManager.glDeleteProgram(getGlId());
 	}
 

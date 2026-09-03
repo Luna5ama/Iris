@@ -6,8 +6,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
-import net.irisshaders.iris.mixinterface.VibrisTerrainQuiescence;
-import net.irisshaders.iris.mixinterface.VibrisShadowTerrainInvalidation;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
 import net.irisshaders.iris.shadows.ShadowRenderer;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
@@ -25,7 +23,6 @@ import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -34,27 +31,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.List;
 import java.util.SortedSet;
 
 @Mixin(SodiumWorldRenderer.class)
-public class MixinSodiumWorldRenderer implements VibrisTerrainQuiescence {
-	@Shadow(remap = false)
-	private RenderSectionManager renderSectionManager;
-
+public class MixinSodiumWorldRenderer {
 	@Unique
 	private float lastSunAngle;
-
-	@Unique
-	@Override
-	public TerrainSnapshot iris$captureTerrainSnapshot() {
-		if (renderSectionManager == null) {
-			return new TerrainSnapshot(
-				false, List.of(), List.of(), List.of(), true, List.of(), "render section manager is unavailable");
-		}
-
-		return ((VibrisTerrainQuiescence) renderSectionManager).iris$captureTerrainSnapshot();
-	}
 
 
 	@Redirect(method = "setupTerrain", remap = false,
@@ -66,7 +48,6 @@ public class MixinSodiumWorldRenderer implements VibrisTerrainQuiescence {
 			float sunAngle = Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(EnvironmentAttributes.SUN_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
 			if (lastSunAngle != sunAngle) {
 				lastSunAngle = sunAngle;
-				((VibrisShadowTerrainInvalidation) instance).iris$markShadowRenderListDirty();
 				return true;
 			}
 		}

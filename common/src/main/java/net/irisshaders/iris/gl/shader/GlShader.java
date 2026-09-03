@@ -7,7 +7,6 @@ import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.GlResource;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.shaderpack.include.ShaderSourceMap;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL20C;
@@ -44,7 +43,6 @@ public class GlShader extends GlResource {
 		}
 
 		int result = GlStateManager.glGetShaderi(handle, GL20C.GL_COMPILE_STATUS);
-		IrisVibrisCompileCatalog.recordCompileLog(name, log, result == GL20C.GL_TRUE);
 
 		if (result != GL20C.GL_TRUE) {
 			throw new ShaderCompileException(name, log);

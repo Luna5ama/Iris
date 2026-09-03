@@ -5,7 +5,6 @@ package net.irisshaders.iris.gl.shader;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL20C;
@@ -48,7 +47,6 @@ public class ProgramCreator {
 		}
 
 		int result = GlStateManager.glGetProgrami(program, GL20C.GL_LINK_STATUS);
-		IrisVibrisCompileCatalog.recordLinkLog(name, log, result == GL20C.GL_TRUE);
 
 		if (result != GL20C.GL_TRUE) {
 			throw new ShaderCompileException(name, log);

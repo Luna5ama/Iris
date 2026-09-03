@@ -6,18 +6,10 @@ import com.mojang.blaze3d.opengl.GlDevice;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import dev.luna5ama.vibris.capture.CaptureManager;
-import dev.luna5ama.vibris.capture.ShaderDebugControl;
-import dev.vibris.api.CompileCatalog;
-import dev.vibris.api.EffectiveShaderSettings;
-import dev.vibris.api.ReloadResult;
 import net.caffeinemc.mods.sodium.api.vertex.serializer.VertexSerializerRegistry;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.irisshaders.iris.compat.dh.DHCompat;
 import net.irisshaders.iris.config.IrisConfig;
 import net.irisshaders.iris.gl.GLDebug;
-import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
 import net.irisshaders.iris.gl.shader.StandardMacros;
@@ -27,7 +19,6 @@ import net.irisshaders.iris.helpers.OptionalBoolean;
 import net.irisshaders.iris.pbr.texture.PBRTextureManager;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.pipeline.PipelineManager;
-import net.irisshaders.iris.pipeline.transform.TransformPatcher;
 import net.irisshaders.iris.pipeline.VanillaRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
@@ -46,16 +37,12 @@ import net.irisshaders.iris.vertices.sodium.EntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.GlyphExtVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.IrisEntityToTerrainVertexSerializer;
 import net.irisshaders.iris.vertices.sodium.ModelToEntityVertexSerializer;
-import net.irisshaders.iris.vibris.IrisVibrisLifecycle;
-import net.irisshaders.iris.vibris.IrisVibrisEffectiveSettings;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.minecraft.ChatFormatting;
 import net.minecraft.SharedConstants;
 import net.minecraft.util.Util;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -77,7 +64,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -99,8 +85,6 @@ public class Iris {
 	 */
 	public static final String MODNAME = "Iris";
 	public static final IrisLogging logger = new IrisLogging(MODNAME);
-	private static final CaptureManager CAPTURE_MANAGER = new CaptureManager();
-	private static final ShaderDebugControl SHADER_DEBUG_CONTROL = new ShaderDebugControl(new IrisShaderDebugHost());
 	public static final boolean IS_FOOL;
 	private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
 	// Change this for snapshots!
@@ -129,14 +113,6 @@ public class Iris {
 	private static UpdateChecker updateChecker;
 	private static boolean fallback;
 	private static boolean loadShaderPackWhenPossible;
-
-	public static CaptureManager getCaptureManager() {
-		return CAPTURE_MANAGER;
-	}
-
-	public static ShaderDebugControl getShaderDebugControl() {
-		return SHADER_DEBUG_CONTROL;
-	}
 
 	static {
 		Calendar c = Calendar.getInstance();
@@ -171,7 +147,6 @@ public class Iris {
 			loadShaderpack();
 		}
 
-		IrisVibrisLifecycle.start();
 	}
 
 	public static void duringRenderSystemInit() {
@@ -391,13 +366,6 @@ public class Iris {
 	}
 
 	private static void handleException(Exception e) {
-		SHADER_DEBUG_CONTROL.recordError(
-			e.getClass().getSimpleName(),
-			e instanceof ShaderCompileException shaderError ? shaderError.getFilename() : "",
-			e.getMessage() == null ? "" : e.getMessage(),
-			Throwables.getStackTraceAsString(e),
-			System.currentTimeMillis()
-		);
 		if (irisConfig.areDebugOptionsEnabled()) {
 			Minecraft.getInstance().setScreen(new DebugLoadFailedGridScreen(Minecraft.getInstance().screen, Component.literal(e instanceof ShaderCompileException ? "Failed to compile shaders" : "Exception"), e));
 		} else {
@@ -594,7 +562,6 @@ public class Iris {
 	}
 
 	public static void reload() throws IOException {
-		SHADER_DEBUG_CONTROL.clearErrors();
 		long time = System.nanoTime();
 		// allows shaderpacks to be changed at runtime
 		irisConfig.initialize();
@@ -615,95 +582,6 @@ public class Iris {
 		}
 		long elapsed = System.nanoTime() - time;
 		System.out.printf("Reloaded shaders in %.2f ms%n", elapsed / 1_000_000.0);
-	}
-
-	public static ReloadResult reloadVibrisShaderpack(Map<String, String> requestOverrides) {
-		try {
-			return reloadVibrisShaderpackInternal(requestOverrides);
-		} finally {
-			TransformPatcher.clearParsingCaches();
-		}
-	}
-
-	private static ReloadResult reloadVibrisShaderpackInternal(Map<String, String> requestOverrides) {
-		SHADER_DEBUG_CONTROL.clearErrors();
-		ShaderPack previousPack = currentPack;
-		String previousPackName = currentPackName;
-		boolean previousFallback = fallback;
-		FileSystem previousZipFileSystem = zipFileSystem;
-		EffectiveShaderSettings previousSettings = previousPack == null
-			? EffectiveShaderSettings.empty()
-			: IrisVibrisEffectiveSettings.capture(previousPack, Map.of(), Map.of());
-		Map<String, String> preservedValues = requestOverrides == null && "vibris".equals(previousPackName)
-			? previousSettings.values()
-			: Map.of();
-		NamespacedId dimension = Minecraft.getInstance().level == null ? DimensionId.OVERWORLD : getCurrentDimension();
-
-		boolean loaded = loadExternalShaderpack("vibris");
-		WorldRenderingPipeline replacement = null;
-		CompileCatalog attemptedCatalog = null;
-		if (loaded) {
-			getPipelineManager().destroyPipeline();
-			ProgramSet programSet = currentPack.getProgramSet(dimension);
-			IrisVibrisCompileCatalog.Session compileSession = IrisVibrisCompileCatalog.begin(programSet);
-			try {
-				replacement = new IrisRenderingPipeline(programSet);
-			} catch (Exception exception) {
-				// IrisRenderingPipeline registers shader storage buffers before every program has
-				// compiled. If construction fails, no pipeline instance exists to destroy them.
-				ShaderStorageBufferHolder.forceDeleteBuffers();
-				handleException(exception);
-				logger.error("Failed to create the Vibris pipeline, restoring the previous pipeline.", exception);
-			} finally {
-				attemptedCatalog = IrisVibrisCompileCatalog.finish(compileSession);
-			}
-		}
-
-		List<ReloadResult.Diagnostic> diagnostics = SHADER_DEBUG_CONTROL.errorList().stream()
-			.map(error -> new ReloadResult.Diagnostic(
-				ReloadResult.Severity.ERROR,
-				error.getFilename(),
-				0,
-				error.getMessage()))
-			.collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-		boolean active = loaded && "vibris".equals(currentPackName) && currentPack != null && !fallback &&
-			replacement instanceof IrisRenderingPipeline;
-		if (active) {
-			getPipelineManager().installPipeline(dimension, replacement);
-			IrisVibrisCompileCatalog.publish(attemptedCatalog);
-			closeShaderpackFileSystem(previousZipFileSystem);
-			zipFileSystem = null;
-			EffectiveShaderSettings effectiveSettings = IrisVibrisEffectiveSettings.capture(
-				currentPack,
-				preservedValues,
-				requestOverrides == null ? Map.of() : requestOverrides);
-			return ReloadResult.success(effectiveSettings, diagnostics);
-		}
-
-		currentPack = previousPack;
-		currentPackName = previousPackName;
-		fallback = previousFallback;
-		zipFileSystem = previousZipFileSystem;
-		boolean restored = true;
-		if (loaded) {
-			WorldRenderingPipeline restoredPipeline = getPipelineManager().preparePipeline(dimension);
-			restored = previousPack == null
-				? restoredPipeline instanceof VanillaRenderingPipeline
-				: restoredPipeline instanceof IrisRenderingPipeline && !fallback;
-		}
-		if (!active && diagnostics.isEmpty()) {
-			diagnostics.add(new ReloadResult.Diagnostic(
-				ReloadResult.Severity.ERROR,
-				"shaderpack",
-				0,
-				"The fixed Vibris shaderpack did not produce an active Iris pipeline."));
-		}
-		if (attemptedCatalog != null) {
-			IrisVibrisCompileCatalog.publish(attemptedCatalog);
-		}
-		return restored
-			? ReloadResult.failurePreservingActiveState(previousSettings, diagnostics)
-			: ReloadResult.failure(diagnostics);
 	}
 
 	/**
@@ -776,8 +654,6 @@ public class Iris {
 		}
 
 		ProgramSet programs = currentPack.getProgramSet(dimensionId);
-		IrisVibrisCompileCatalog.Session compileSession = IrisVibrisCompileCatalog.begin(programs);
-
 		// We use DeferredWorldRenderingPipeline on 1.16, and NewWorldRendering pipeline on 1.17 when rendering shaders.
 		try {
 			return new IrisRenderingPipeline(programs);
@@ -790,8 +666,6 @@ public class Iris {
 			fallback = true;
 
 			return new VanillaRenderingPipeline();
-		} finally {
-			IrisVibrisCompileCatalog.publish(IrisVibrisCompileCatalog.finish(compileSession));
 		}
 	}
 
@@ -915,8 +789,6 @@ public class Iris {
 	 */
 	public void onEarlyInitialize() {
 		IRIS_VERSION = IrisPlatformHelpers.getInstance().getVersion();
-		IrisVibrisLifecycle.initializeAutomation();
-
 		updateChecker = new UpdateChecker(IRIS_VERSION);
 
 		reloadKeybind = IrisPlatformHelpers.getInstance().registerKeyBinding(new KeyMapping("iris.keybind.reload", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, irisKeybindCategory));
@@ -946,48 +818,6 @@ public class Iris {
 
 		updateChecker.checkForUpdates(irisConfig);
 
-		CommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext, selection) -> {
-			dispatcher.register(
-				Commands.literal("vibris")
-					.then(Commands.literal("preset")
-						.then(Commands.literal("save")
-							.then(Commands.argument("id", StringArgumentType.word())
-								.executes(ctx -> {
-									try {
-										String preset = IrisVibrisLifecycle.savePreset(StringArgumentType.getString(ctx, "id"));
-										ctx.getSource().sendSuccess(() -> Component.literal("Saved Vibris preset: " + preset), false);
-										return 1;
-									} catch (Exception exception) {
-										ctx.getSource().sendFailure(Component.literal("Failed to save Vibris preset: " + exception.getMessage()));
-										return 0;
-									}
-								}))))
-			);
-			dispatcher.register(
-				Commands.literal("capture")
-					.then(Commands.argument("pass", StringArgumentType.word())
-						.executes(ctx -> {
-							String pass = StringArgumentType.getString(ctx, "pass");
-							Path path = CaptureManager.defaultOutputPath(pass);
-							IrisRenderSystem.prepareCapture(path, pass);
-							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris capture: " + path), false);
-							return 1;
-						})
-					)
-			);
-			dispatcher.register(
-				Commands.literal("capturemulti")
-					.then(Commands.argument("type", StringArgumentType.word())
-						.executes(ctx -> {
-							String type = StringArgumentType.getString(ctx, "type");
-							Path path = CaptureManager.defaultOutputPath(type);
-							IrisRenderSystem.prepareMultiCapture(path, type);
-							ctx.getSource().sendSuccess(() -> Component.literal("Queued vibris multi capture: " + path), false);
-							return 1;
-						})
-					)
-			);
-		});
 		initialized = true;
 	}
 }

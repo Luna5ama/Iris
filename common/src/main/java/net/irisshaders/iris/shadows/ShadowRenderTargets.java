@@ -1,12 +1,10 @@
 package net.irisshaders.iris.shadows;
 
 import com.google.common.collect.ImmutableSet;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.TextureFormat;
-import dev.luna5ama.glwrapper.enums.ImageFormat;
-import dev.luna5ama.glwrapper.objects.TextureObject;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.irisshaders.iris.features.FeatureFlags;
@@ -26,10 +24,6 @@ import java.util.List;
 public class ShadowRenderTargets {
 	private final RenderTarget[] targets;
 	private final PackShadowDirectives shadowDirectives;
-
-	private final TextureObject.Texture2D mainDepthActual;
-	private final TextureObject.Texture2D noTranslucentsActual;
-
 	private final GpuTexture mainDepth;
 	private final GpuTexture noTranslucents;
 	private final GlFramebuffer depthSourceFb;
@@ -58,6 +52,7 @@ public class ShadowRenderTargets {
 		linearFiltered = new boolean[size];
 		buffersToBeCleared = new IntArrayList();
 
+
 		this.ownedFramebuffers = new ArrayList<>();
 		this.resolution = resolution;
 
@@ -67,14 +62,8 @@ public class ShadowRenderTargets {
 			this.linearFiltered[i] = !shadowDirectives.getDepthSamplingSettings().get(i).getNearest();
 		}
 
-		this.mainDepthActual = new TextureObject.Texture2D();
-		this.noTranslucentsActual = new TextureObject.Texture2D();
-
-		this.mainDepthActual.allocate(1, ImageFormat.Depth32F.INSTANCE, resolution, resolution);
-		this.noTranslucentsActual.allocate(1, ImageFormat.Depth32F.INSTANCE, resolution, resolution);
-
-		this.mainDepth = new GlTexture(GpuTexture.USAGE_COPY_SRC | GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING, "Shadow Map", TextureFormat.DEPTH32, resolution,resolution, 1, this.mipped[0] ? log2(resolution) : 1, this.mainDepthActual.getId());
-		this.noTranslucents = new GlTexture(GpuTexture.USAGE_COPY_SRC | GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING, "Shadow Map / Opaque", TextureFormat.DEPTH32, resolution, resolution, 1, this.mipped[0] ? log2(resolution) : 1, this.noTranslucentsActual.getId());
+		this.mainDepth = RenderSystem.getDevice().createTexture("Shadow Map", GpuTexture.USAGE_COPY_SRC | GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING, TextureFormat.DEPTH32, resolution, resolution, 1, this.mipped[0] ? log2(resolution) : 1);
+		this.noTranslucents = RenderSystem.getDevice().createTexture("Shadow Map / Opaque", GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING, TextureFormat.DEPTH32, resolution, resolution, 1, this.mipped[1] ? log2(resolution) : 1);
 		// TODO: linear filtered shadow maps
 
 		// NB: Make sure all buffers are cleared so that they don't contain undefined
@@ -208,11 +197,6 @@ public class ShadowRenderTargets {
 
 	public void onFullClear() {
 		fullClearRequired = false;
-	}
-
-	public void resetTemporalState() {
-		for (int i = 0; i < flipped.length; i++) flipped[i] = false;
-		translucentDepthDirty = true;
 	}
 
 	public GlFramebuffer createFramebufferWritingToMain(int[] drawBuffers) {

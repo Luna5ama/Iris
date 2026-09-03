@@ -1,7 +1,3 @@
-import net.fabricmc.loom.task.prod.ClientProductionRunTask
-import org.gradle.jvm.toolchain.JavaLanguageVersion
-import java.nio.file.Files
-
 plugins {
     id("java")
     id("idea")
@@ -36,28 +32,6 @@ base {
     archivesName.set("iris-fabric")
 }
 
-val vibrisBridgeTest = sourceSets.create("vibrisBridgeTest") {
-    java.srcDir("src/vibrisBridgeTest/java")
-    compileClasspath += sourceSets.main.get().output
-    compileClasspath += project(":common").sourceSets.main.get().output
-    runtimeClasspath += output + compileClasspath + sourceSets.main.get().runtimeClasspath
-}
-
-configurations[vibrisBridgeTest.implementationConfigurationName]
-    .extendsFrom(configurations.implementation.get(), configurations.testImplementation.get())
-configurations[vibrisBridgeTest.runtimeOnlyConfigurationName]
-    .extendsFrom(configurations.runtimeOnly.get(), configurations.testRuntimeOnly.get())
-
-val vibrisRuntimeInclude = configurations.create("vibrisRuntimeInclude") {
-    isCanBeConsumed = false
-    isCanBeResolved = false
-    isTransitive = true
-}
-
-configurations.named("includeInternal") {
-    extendsFrom(vibrisRuntimeInclude)
-}
-
 dependencies {
     minecraft("com.mojang:minecraft:${MINECRAFT_VERSION}")
     mappings(loom.layered {
@@ -85,15 +59,6 @@ dependencies {
         include(name)
     }
 
-    fun implementAndIncludeTransitive(name: String) {
-        modImplementation(name) {
-            isTransitive = false
-        }
-        include(name) {
-            isTransitive = false
-        }
-    }
-
     // Fabric API modules
     addEmbeddedFabricModule("fabric-api-base")
     addEmbeddedFabricModule("fabric-key-binding-api-v1")
@@ -109,39 +74,6 @@ dependencies {
     implementAndInclude("io.github.douira:glsl-transformer:3.0.0-pre3-iris14")
     implementAndInclude("org.anarres:jcpp:1.4.14")
 
-    implementAndIncludeTransitive("dev.luna5ama:kmogus-core:1.1-SNAPSHOT")
-    implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
-    implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-base:1.1.0")
-    implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-core:1.1.0")
-    implementAndIncludeTransitive("dev.luna5ama:gl-wrapper-lwjgl-3:1.1.0")
-    implementAndIncludeTransitive("dev.luna5ama:vibris-common")
-    implementAndIncludeTransitive("dev.luna5ama:vibris-capture")
-    modImplementation("dev.luna5ama:vibris-core")
-    vibrisRuntimeInclude("dev.luna5ama:vibris-core")
-
-    "vibrisBridgeTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
-    "vibrisBridgeTestImplementation"("org.junit.jupiter:junit-jupiter")
-    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-api")
-    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-capture")
-    "vibrisBridgeTestImplementation"("dev.luna5ama:vibris-core")
-    "vibrisBridgeTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
-
-//    implementAndIncludeTransitive("org.apache.commons:commons-compress:1.28.0")
-//    implementAndIncludeTransitive("commons-codec:commons-codec:1.19.0")
-//    implementAndIncludeTransitive("commons-io:commons-io:2.20.0")
-//    implementAndIncludeTransitive("org.apache.commons:commons-lang3:3.18.0")
-
-    implementAndIncludeTransitive("org.jetbrains:annotations:13.0")
-    implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib:2.2.21")
-    implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.21")
-    implementAndIncludeTransitive("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.21")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1")
-    implementAndIncludeTransitive("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
-
     implementation(project.project(":common").sourceSets.getByName("vendored").output)
     implementation(project.project(":common").sourceSets.getByName("api").output)
     compileOnly(project.project(":common").sourceSets.getByName("headers").output)
@@ -156,13 +88,6 @@ tasks.named("compileTestJava").configure {
 
 tasks.named("test").configure {
     enabled = false
-}
-
-tasks.register<Test>("vibrisBridgeTest") {
-    description = "Runs the focused Iris-Vibris runtime bridge tests."
-    testClassesDirs = vibrisBridgeTest.output.classesDirs
-    classpath = vibrisBridgeTest.runtimeClasspath
-    useJUnitPlatform()
 }
 
 loom {
@@ -207,57 +132,4 @@ tasks {
     }
 
     remapJar.get().destinationDirectory = rootDir.resolve("build").resolve("libs")
-}
-
-tasks.register<ClientProductionRunTask>("runVibrisAutomationClient") {
-    description = "Runs the exact patched Iris JAR in an isolated Vibris automation game directory."
-    group = "verification"
-
-    val patchedJar = providers.gradleProperty("automationPatchedJar")
-    val gameDirectory = providers.gradleProperty("automationGameDir")
-    val runId = providers.gradleProperty("automationRunId")
-    val scenario = providers.gradleProperty("automationScenario")
-    doFirst {
-        val game = file(gameDirectory.get())
-        val pending = game.resolve("vibris/pending")
-        val artifacts = game.resolve("vibris/artifacts")
-        val shaderpack = game.resolve("shaderpacks/vibris")
-        listOf(pending, artifacts, shaderpack).forEach { Files.createDirectories(it.toPath()) }
-        val serverConfig = game.resolve("config/vibris/server.json")
-        Files.createDirectories(serverConfig.parentFile.toPath())
-        fun jsonPath(value: File): String = value.absolutePath.replace("\\", "\\\\").replace("\"", "\\\"")
-        serverConfig.writeText(
-            """
-            {
-              "schema_version": 1,
-              "listen_address": "127.0.0.1:50051",
-              "pending_shaders_root": "${jsonPath(pending)}",
-              "artifact_root": "${jsonPath(artifacts)}",
-              "artifact_quota_bytes": 3221225472,
-              "shaderpack_root": "${jsonPath(shaderpack)}",
-              "max_source_bytes": 536870912,
-              "max_source_files": 100000,
-              "max_global_queue": 32,
-              "max_actions_per_job": 64
-            }
-            """.trimIndent()
-        )
-    }
-
-    mods.from(patchedJar.map { file(it) })
-    mods.from(SODIUM_DEPENDENCY_FABRIC)
-    runDir.set(layout.dir(gameDirectory.map { file(it) }))
-    javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    })
-    jvmArgs.set(runId.zip(scenario) { id, selectedScenario ->
-        listOf("-Dvibris.automation.runId=$id") + if (selectedScenario == "g008-c003") {
-            listOf("-Dio.grpc.netty.shaded.io.netty.allocator.type=unpooled")
-        } else {
-            emptyList()
-        }
-    })
-    programArgs.set(gameDirectory.map { game ->
-        listOf("--gameDir", file(game).absolutePath, "--quickPlaySingleplayer", "vibris-automation-world")
-    })
 }

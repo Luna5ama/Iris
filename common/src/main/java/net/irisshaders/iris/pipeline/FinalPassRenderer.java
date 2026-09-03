@@ -7,7 +7,6 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import dev.vibris.api.ResourceCatalog;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.irisshaders.iris.features.FeatureFlags;
@@ -51,8 +50,6 @@ import net.irisshaders.iris.targets.RenderTargets;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
-import net.irisshaders.iris.vibris.IrisVibrisPassCapture;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
@@ -89,12 +86,11 @@ public class FinalPassRenderer {
 	private final Object2ObjectMap<String, TextureAccess> customTextureIds;
 	private final CustomUniforms customUniforms;
 	private final WorldRenderingPipeline pipeline;
-	private final IrisVibrisPassCapture vibrisPassCapture;
 	private int lastColorTextureId;
 	private int lastColorTextureVersion;
 
 	// TODO: The length of this argument list is getting a bit ridiculous
-	public FinalPassRenderer(WorldRenderingPipeline pipeline, IrisVibrisPassCapture vibrisPassCapture, ProgramSet pack, RenderTargets renderTargets, TextureAccess noiseTexture, ShaderStorageBufferHolder holder,
+	public FinalPassRenderer(WorldRenderingPipeline pipeline, ProgramSet pack, RenderTargets renderTargets, TextureAccess noiseTexture, ShaderStorageBufferHolder holder,
 							 FrameUpdateNotifier updateNotifier, ImmutableSet<Integer> flippedBuffers,
 							 CenterDepthSampler centerDepthSampler,
 							 Supplier<ShadowRenderTargets> shadowTargetsSupplier,
@@ -102,7 +98,6 @@ public class FinalPassRenderer {
 							 Object2ObjectMap<String, TextureAccess> irisCustomTextures, Set<GlImage> customImages, ImmutableSet<Integer> flippedAtLeastOnce
 		, CustomUniforms customUniforms) {
 		this.pipeline = pipeline;
-		this.vibrisPassCapture = vibrisPassCapture;
 		this.centerDepthSampler = centerDepthSampler;
 		this.customTextureIds = customTextureIds;
 		this.irisCustomTextures = irisCustomTextures;
@@ -123,7 +118,6 @@ public class FinalPassRenderer {
 			pass.computes = createComputes(pack.getFinalCompute(), flippedBuffers, flippedAtLeastOnce, shadowTargetsSupplier, holder);
 			pass.stageReadsFromAlt = flippedBuffers;
 			pass.flipsAfterPass = flippedBuffers;
-			pass.captureHandle = vibrisPassCapture.register(ResourceCatalog.PassStage.FINAL, source.getName());
 			pass.mipmappedBuffers = directives.getMipmappedBuffers();
 
 			return pass;
@@ -268,7 +262,6 @@ public class FinalPassRenderer {
 
 				renderPass.drawIndexed(0, 0, 6, 1);
 			}
-			vibrisPassCapture.captureBoundary(finalPass.captureHandle, finalPass.flipsAfterPass);
 			GLDebug.popGroup();
 		} else {
 			// If there are no passes, we somehow need to transfer the content of the Iris color render targets into
@@ -357,10 +350,8 @@ public class FinalPassRenderer {
 		ProgramBuilder builder;
 
 		try {
-			builder = IrisVibrisCompileCatalog.compileGraphics(
-				source.getName(), "final", transformed,
-				() -> ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
-					IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
+			builder = ProgramBuilder.begin(source.getName(), vertex, geometry, fragment,
+				IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
 		} catch (ShaderCompileException e) {
 			throw e;
 		} catch (RuntimeException e) {
@@ -414,9 +405,7 @@ public class FinalPassRenderer {
 
 					ShaderPrinter.printProgram(source.getName()).addSource(PatchShaderType.COMPUTE, transformed).print();
 
-					builder = IrisVibrisCompileCatalog.compileCompute(
-						source.getName() + ".csh", "final", transformed,
-						() -> ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS));
+					builder = ProgramBuilder.beginCompute(source.getName(), transformed, IrisSamplers.COMPOSITE_RESERVED_TEXTURE_UNITS);
 				} catch (ShaderCompileException e) {
 					throw e;
 				} catch (RuntimeException e) {
@@ -472,7 +461,6 @@ public class FinalPassRenderer {
 		ImmutableSet<Integer> stageReadsFromAlt;
 		ImmutableSet<Integer> mipmappedBuffers;
 		ImmutableSet<Integer> flipsAfterPass;
-		IrisVibrisPassCapture.PassHandle captureHandle;
 
 		private void destroy() {
 			this.program.destroy();

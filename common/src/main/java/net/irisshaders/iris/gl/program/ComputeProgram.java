@@ -17,6 +17,7 @@ import org.lwjgl.opengl.GL46C;
 import java.util.EnumMap;
 
 public final class ComputeProgram extends GlResource {
+	private final String name;
 	private final ProgramUniforms uniforms;
 	private final ProgramSamplers samplers;
 	private final ProgramImages images;
@@ -28,10 +29,10 @@ public final class ComputeProgram extends GlResource {
 	private Vector3i cachedWorkGroups;
 	private FilledIndirectPointer indirectPointer;
 	private final EnumMap<ShaderType, String> sources;
-	private final ComputeProgramTiming timing;
 
 	ComputeProgram(String name, int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images, EnumMap<ShaderType, String> sources) {
 		super(program);
+		this.name = name;
 
 		localSize = new int[3];
 		IrisRenderSystem.getProgramiv(program, GL43C.GL_COMPUTE_WORK_GROUP_SIZE, localSize);
@@ -39,7 +40,6 @@ public final class ComputeProgram extends GlResource {
 		this.samplers = samplers;
 		this.images = images;
 		this.sources = sources;
-		this.timing = new ComputeProgramTiming(name, sources.get(ShaderType.COMPUTE));
 	}
 
 	public static void unbind() {
@@ -87,12 +87,9 @@ public final class ComputeProgram extends GlResource {
 
 		if (indirectPointer != null) {
 			IrisRenderSystem.bindBuffer(GL46C.GL_DISPATCH_INDIRECT_BUFFER, indirectPointer.buffer());
-			IrisRenderSystem.dispatchComputeIndirect(
-				sources, timing.indirect(indirectPointer.offset()), indirectPointer.offset()
-			);
+			IrisRenderSystem.dispatchComputeIndirect(sources, name, indirectPointer.offset());
 		} else {
-			Vector3i workGroups = getWorkGroups(width, height);
-			IrisRenderSystem.dispatchCompute(sources, timing.direct(workGroups), workGroups);
+			IrisRenderSystem.dispatchCompute(sources, name, getWorkGroups(width, height));
 		}
 	}
 

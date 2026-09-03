@@ -38,7 +38,7 @@ public class ShaderPrinter {
 		programCounter = 0;
 	}
 
-	public static void awaitPendingWrites() throws IOException {
+	private static void awaitPendingWrites() throws IOException {
 		List<Future<?>> snapshot;
 		synchronized (PENDING_LOCK) {
 			snapshot = List.copyOf(PENDING);

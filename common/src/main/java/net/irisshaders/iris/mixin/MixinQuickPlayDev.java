@@ -2,7 +2,6 @@ package net.irisshaders.iris.mixin;
 
 import com.mojang.realmsclient.client.RealmsClient;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
-import net.irisshaders.iris.vibris.IrisVibrisAutomation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.main.GameConfig;
@@ -48,7 +47,7 @@ public class MixinQuickPlayDev {
 	}
 
 	private static boolean isDevRun() {
-		return IrisPlatformHelpers.getInstance().isDevelopmentEnvironment() || IrisVibrisAutomation.enabled();
+		return IrisPlatformHelpers.getInstance().isDevelopmentEnvironment();
 	}
 
 	private static void createWorld(Minecraft minecraft, String name) {

@@ -6,7 +6,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.mojang.blaze3d.opengl.GlStateManager;
-import dev.luna5ama.vibris.capture.GraphicsProgramRegistry;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.serialization.JsonOps;
@@ -37,7 +36,6 @@ import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.VanillaUniforms;
 import net.irisshaders.iris.uniforms.builtin.BuiltinReplacementUniforms;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.vibris.IrisVibrisCompileCatalog;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.ShaderManager;
@@ -150,15 +148,12 @@ public class ShaderCreator {
 			}
 		});
 
-		PartialShader id = IrisVibrisCompileCatalog.compileGraphics(name, source.getName(), transformed,
-			() -> link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false));
+		PartialShader id = link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false);
 
 
 		return new ShaderSupplier(shaderKey, id, () -> {
 			try {
-				int program = id.getFinally();
-				GraphicsProgramRegistry.register(program, source.getName(), vertex, tessControl, tessEval, geometry, fragment);
-				return new ExtendedShader(program, name, vertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
+				return new ExtendedShader(id.getFinally(), name, vertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
 					CommonUniforms.addDynamicUniforms(uniforms, FogMode.PER_VERTEX);
 					customUniforms.assignTo(uniforms);
 					BuiltinReplacementUniforms.addBuiltinReplacementUniforms(uniforms);
@@ -194,9 +189,6 @@ public class ShaderCreator {
 			((VertexFormatExtension) vertexFormat).bindAttributesIris(isFallback, i);
 
 			GlStateManager.glLinkProgram(i);
-			String log = IrisRenderSystem.getProgramInfoLog(i);
-			int result = GlStateManager.glGetProgrami(i, GL20C.GL_LINK_STATUS);
-			IrisVibrisCompileCatalog.recordLinkLog(name, log, result == GL20C.GL_TRUE);
 
 			return new PartialShader(i, vertexS, fragS, geometryS, tessContS, tessEvalS);
 		}
@@ -229,8 +221,6 @@ public class ShaderCreator {
 		}
 
 		int result = GlStateManager.glGetShaderi(shader, GL20C.GL_COMPILE_STATUS);
-		IrisVibrisCompileCatalog.recordCompileLog(
-			name + PatchShaderType.fromGlShaderType(shaderType)[0].extension, log, result == GL20C.GL_TRUE);
 
 		if (result != GL20C.GL_TRUE) {
 			throw new ShaderCompileException(name, log);
@@ -336,8 +326,7 @@ public class ShaderCreator {
 			}
 		});
 
-		PartialShader id = IrisVibrisCompileCatalog.compileGraphics(name, source.getName(), transformed,
-			() -> link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false));
+		PartialShader id = link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false);
 
 
 		return new ShaderSupplier(shaderKey, id, () -> {

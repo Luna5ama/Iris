@@ -114,7 +114,7 @@ public class ProgramBuilder extends ProgramUniforms.Builder implements SamplerHo
 	}
 
 	public Program build() {
-		return new Program(name, program, super.buildUniforms(), this.samplers.build(), this.images.build(), this.sources);
+		return new Program(program, super.buildUniforms(), this.samplers.build(), this.images.build());
 	}
 
 	public ComputeProgram buildCompute() {
